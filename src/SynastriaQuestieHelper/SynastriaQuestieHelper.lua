@@ -301,7 +301,7 @@ function SynastriaQuestieHelper:CreateUI()
             frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", pos.left, pos.top)
         end
     else
-        frame:SetWidth(500)
+        frame:SetWidth(400)
         frame:SetHeight(400)
     end
     
