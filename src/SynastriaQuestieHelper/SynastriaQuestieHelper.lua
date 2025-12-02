@@ -212,6 +212,38 @@ function SynastriaQuestieHelper:GetQuestRewardsFromItemDB(questId)
     return rewards
 end
 
+-- Get quest starter coordinates from Questie
+function SynastriaQuestieHelper:GetQuestStarterCoords(questId)
+    if not self.QuestieDB then return nil end
+    
+    -- Iterate through NPCs to find one that starts this quest
+    if self.QuestieDB.NPCPointers then
+        for npcId in pairs(self.QuestieDB.NPCPointers) do
+            local npcData = self.QuestieDB.QueryNPCSingle(npcId, "questStarts")
+            if npcData and type(npcData) == "table" then
+                -- Check if this NPC starts our quest
+                for _, qId in ipairs(npcData) do
+                    if qId == questId then
+                        -- Found NPC that starts this quest, get spawns
+                        local spawns = self.QuestieDB.QueryNPCSingle(npcId, "spawns")
+                        if spawns and type(spawns) == "table" then
+                            -- spawns is {[zoneId] = {{x,y}, {x,y}}}
+                            for zoneId, coords in pairs(spawns) do
+                                if coords and coords[1] and coords[1][1] and coords[1][2] then
+                                    return coords[1][1], coords[1][2], zoneId
+                                end
+                            end
+                        end
+                        break
+                    end
+                end
+            end
+        end
+    end
+    
+    return nil
+end
+
 -- Get the full quest chain leading to this quest using Questie
 function SynastriaQuestieHelper:GetQuestChain(questId)
     local chain = {}
@@ -519,7 +551,16 @@ function SynastriaQuestieHelper:UpdateQuestList()
                     -- Use numbers for all quests in chain
                     local prefix = string.format("  %d. ", i)
                     
-                    chainLabel:SetText(prefix .. chainQuest.name)
+                    -- Add coordinates for available quests
+                    local questText = chainQuest.name
+                    if status == "available" then
+                        local x, y, zoneId = self:GetQuestStarterCoords(chainQuest.id)
+                        if x and y then
+                            questText = string.format("%s (%.1f, %.1f)", chainQuest.name, x, y)
+                        end
+                    end
+                    
+                    chainLabel:SetText(prefix .. questText)
                     chainLabel:SetFullWidth(true)
                     
                     -- Color based on status
