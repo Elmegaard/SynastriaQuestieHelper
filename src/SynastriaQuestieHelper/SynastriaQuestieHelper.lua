@@ -11,6 +11,8 @@ SynastriaQuestieHelper.totalQuestCount = 0
 SynastriaQuestieHelper.isScanning = false
 SynastriaQuestieHelper.isLoading = false
 SynastriaQuestieHelper.coordCache = {}
+SynastriaQuestieHelper.chainCache = {} -- Cache quest chains
+SynastriaQuestieHelper.rewardCache = {} -- Cache quest rewards
 
 function SynastriaQuestieHelper:OnInitialize()
     self.db = LibStub("AceDB-3.0"):New("SynastriaQuestieHelperDB", {
@@ -461,6 +463,11 @@ end
 
 -- Get the full quest chain leading to this quest using Questie
 function SynastriaQuestieHelper:GetQuestChain(questId)
+    -- Check cache first
+    if self.chainCache[questId] then
+        return self.chainCache[questId]
+    end
+    
     local chain = {}
     local current = questId
     local visited = {} -- Prevent infinite loops
@@ -509,6 +516,9 @@ function SynastriaQuestieHelper:GetQuestChain(questId)
             break
         end
     end
+    
+    -- Cache the result
+    self.chainCache[questId] = chain
     
     return chain
 end
@@ -652,6 +662,12 @@ end
 
 -- Helper to get rewards from quest log if quest is accepted
 function SynastriaQuestieHelper:GetQuestLogRewards(questId)
+    -- Check cache first
+    local cacheKey = "log_" .. questId
+    if self.rewardCache[cacheKey] then
+        return self.rewardCache[cacheKey]
+    end
+    
     local rewards = {}
     
     local numEntries = GetNumQuestLogEntries()
@@ -695,6 +711,9 @@ function SynastriaQuestieHelper:GetQuestLogRewards(questId)
             break
         end
     end
+    
+    -- Cache the result
+    self.rewardCache[cacheKey] = rewards
     
     return rewards
 end
