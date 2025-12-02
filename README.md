@@ -43,3 +43,4 @@
 ## Credits
 
 - **Questie**: For the excellent quest database
+- **Copilot**: Basically wrote the entire addon
