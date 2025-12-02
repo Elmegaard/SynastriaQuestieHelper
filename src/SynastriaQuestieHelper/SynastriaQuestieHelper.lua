@@ -144,6 +144,51 @@ function SynastriaQuestieHelper:OnSlashCommand(input)
     end
 end
 
+function SynastriaQuestieHelper:ShowCopyableURL(url)
+    local AceGUI = LibStub("AceGUI-3.0")
+    if not AceGUI then return end
+    
+    -- Create or reuse popup frame
+    if not self.urlPopup then
+        local frame = AceGUI:Create("Frame")
+        frame:SetTitle("Quest URL")
+        frame:SetWidth(450)
+        frame:SetHeight(150)
+        frame:SetLayout("Flow")
+        frame:SetCallback("OnClose", function(widget)
+            widget:Hide()
+        end)
+        
+        -- Make URL popup closable with ESC
+        _G["SynastriaQuestieHelperURLFrame"] = frame.frame
+        tinsert(UISpecialFrames, "SynastriaQuestieHelperURLFrame")
+        
+        -- Label
+        local label = AceGUI:Create("Label")
+        label:SetText("Press Ctrl+C to copy:")
+        label:SetFullWidth(true)
+        frame:AddChild(label)
+        
+        -- Edit box
+        local editBox = AceGUI:Create("EditBox")
+        editBox:SetFullWidth(true)
+        editBox:DisableButton(true)
+        editBox:SetCallback("OnEnterPressed", function(widget)
+            frame:Hide()
+        end)
+        frame:AddChild(editBox)
+        
+        frame.urlEditBox = editBox
+        self.urlPopup = frame
+    end
+    
+    -- Set URL and show
+    self.urlPopup.urlEditBox:SetText(url)
+    self.urlPopup.urlEditBox:HighlightText()
+    self.urlPopup.urlEditBox:SetFocus()
+    self.urlPopup:Show()
+end
+
 function SynastriaQuestieHelper:ResetFramePosition()
     self.db.profile.framePos = {}
     if self.frame then
@@ -579,9 +624,18 @@ function SynastriaQuestieHelper:CreateUI()
         frame:SetHeight(400)
     end
     
-    -- Make frame closable with ESC key
-    _G["SynastriaQuestieHelperFrame"] = frame.frame
-    tinsert(UISpecialFrames, "SynastriaQuestieHelperFrame")
+    -- Handle ESC key manually for proper layering
+    frame.frame:EnableKeyboard(true)
+    frame.frame:SetScript("OnKeyDown", function(self, key)
+        if key == "ESCAPE" then
+            -- Check if URL popup is open first
+            if SynastriaQuestieHelper.urlPopup and SynastriaQuestieHelper.urlPopup:IsVisible() then
+                SynastriaQuestieHelper.urlPopup:Hide()
+            else
+                frame:Hide()
+            end
+        end
+    end)
     
     self.frame = frame
     
@@ -807,6 +861,8 @@ function SynastriaQuestieHelper:UpdateQuestList()
                         if x and y then
                             questText = string.format("%s [%.1f, %.1f]", chainQuest.name, x, y)
                             coordX, coordY, coordZone = x, y, zoneId
+                        else
+                            questText = string.format("%s (item)", chainQuest.name)
                         end
                     end
                     
@@ -824,30 +880,33 @@ function SynastriaQuestieHelper:UpdateQuestList()
                         chainLabel:SetColor(0.8, 0.4, 0.4) -- Muted red
                     end
                     
-                    -- Make label clickable for TomTom waypoint
-                    if coordX and coordY and coordZone then
-                        -- Access the actual label frame from AceGUI widget
-                        local labelFrame = chainLabel.frame
-                        if labelFrame then
-                            labelFrame:EnableMouse(true)
-                            labelFrame:SetScript("OnMouseDown", function(frame, button)
-                                if button == "LeftButton" then
+                    -- Make label clickable - waypoint or wowhead
+                    local labelFrame = chainLabel.frame
+                    if labelFrame then
+                        labelFrame:EnableMouse(true)
+                        labelFrame:SetScript("OnMouseDown", function(frame, button)
+                            if button == "LeftButton" then
+                                if coordX and coordY and coordZone then
                                     self:AddTomTomWaypoint(coordX, coordY, chainQuest.name)
                                 end
-                            end)
-                            labelFrame:SetScript("OnEnter", function(frame)
-                                local label = frame:GetChildren()
-                                if label then
-                                    label:SetAlpha(0.7)
-                                end
-                            end)
-                            labelFrame:SetScript("OnLeave", function(frame)
-                                local label = frame:GetChildren()
-                                if label then
-                                    label:SetAlpha(1.0)
-                                end
-                            end)
-                        end
+                            elseif button == "RightButton" then
+                                -- Show copyable wowhead link popup
+                                local url = string.format("https://www.classic.wowhead.com/quest=%d", chainQuest.id)
+                                self:ShowCopyableURL(url)
+                            end
+                        end)
+                        labelFrame:SetScript("OnEnter", function(frame)
+                            local label = frame:GetChildren()
+                            if label then
+                                label:SetAlpha(0.7)
+                            end
+                        end)
+                        labelFrame:SetScript("OnLeave", function(frame)
+                            local label = frame:GetChildren()
+                            if label then
+                                label:SetAlpha(1.0)
+                            end
+                        end)
                     end
                     
                     self.scroll:AddChild(chainLabel)
