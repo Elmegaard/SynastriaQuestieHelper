@@ -311,12 +311,21 @@ function SynastriaQuestieHelper:CreateUI()
     
     self.frame = frame
     
-    -- Scan Button
+    -- Create scan button with AceGUI for consistent styling
     local scanBtn = AceGUI:Create("Button")
-    scanBtn:SetText("Scan Quests")
-    scanBtn:SetWidth(200)
+    scanBtn:SetText("Scan Zone")
+    scanBtn:SetWidth(100)
+    scanBtn:SetHeight(22)
     scanBtn:SetCallback("OnClick", function() self:ScanQuests() end)
-    frame:AddChild(scanBtn)
+    
+    -- Position it manually next to close button
+    scanBtn.frame:SetParent(frame.frame)
+    scanBtn.frame:ClearAllPoints()
+    scanBtn.frame:SetPoint("BOTTOMRIGHT", frame.frame, "BOTTOMRIGHT", -132, 16)
+    scanBtn.frame:SetFrameLevel(frame.frame:GetFrameLevel() + 10)
+    scanBtn.frame:Show()
+    
+    self.scanButton = scanBtn
     
     -- Scroll Frame for List
     local scrollContainer = AceGUI:Create("SimpleGroup")
