@@ -102,7 +102,7 @@ function SynastriaQuestieHelper:OnSlashCommand(input)
     elseif input:trim() == "reset" then
         self:ResetFramePosition()
     else
-        self:Print("Usage: /synastriaquestiehelper [toggle\|reset]")
+        self:Print("Usage: /synastriaquestiehelper [toggle, reset]")
     end
 end
 
