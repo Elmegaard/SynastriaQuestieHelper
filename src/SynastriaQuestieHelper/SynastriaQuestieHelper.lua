@@ -7,6 +7,7 @@ local CHAT_MSG_SYSTEM = "CHAT_MSG_SYSTEM"
 
 -- State
 SynastriaQuestieHelper.quests = {}
+SynastriaQuestieHelper.totalQuestCount = 0
 SynastriaQuestieHelper.isScanning = false
 
 function SynastriaQuestieHelper:OnInitialize()
@@ -131,6 +132,7 @@ function SynastriaQuestieHelper:ScanQuests()
 
     self.isScanning = true
     self.quests = {} -- Clear previous results
+    self.totalQuestCount = 0 -- Reset total count
     self:RegisterEvent(CHAT_MSG_SYSTEM)
     
     -- Send the command to the server
@@ -153,10 +155,18 @@ end
 function SynastriaQuestieHelper:CHAT_MSG_SYSTEM(event, message)
     if not self.isScanning then return end
 
-    -- Parse the message
+    -- Check for total quest count message
+    -- Format: "Found 20 possible quests, showing 1 to 10:"
+    local totalCount = message:match("Found (%d+) possible quests")
+    if totalCount then
+        self.totalQuestCount = tonumber(totalCount)
+        self:UpdateQuestList()
+        return
+    end
+    
+    -- Parse individual quest messages
     -- Format seen: "1. [411] |cffffff00|Hquest:411:12|h[The Prodigal Lich Returns]|h|r"
     -- Regex: Match [ID] then find the name inside |h[Name]|h
-    
     local questId, questName = message:match("%[(%d+)%].-|h%[(.-)%]|h")
     
     if questId and questName then
@@ -275,7 +285,11 @@ function SynastriaQuestieHelper:CreateUI()
     
     -- Main Frame
     local frame = AceGUI:Create("Frame")
-    frame:SetTitle("Synastria Questie Helper")
+    local titleText = "Synastria Questie Helper"
+    if self.totalQuestCount > 0 then
+        titleText = string.format("Synastria Questie Helper (Showing %d/%d)", #self.quests, self.totalQuestCount)
+    end
+    frame:SetTitle(titleText)
     frame:SetCallback("OnClose", function(widget)
         -- Save position and size before closing
         local status = widget.status or widget.localstatus
@@ -438,6 +452,15 @@ end
 function SynastriaQuestieHelper:UpdateQuestList()
     if not self.scroll then return end
     self.scroll:ReleaseChildren()
+    
+    -- Update frame title with quest count
+    if self.frame then
+        local titleText = "Synastria Questie Helper"
+        if self.totalQuestCount > 0 then
+            titleText = string.format("Synastria Questie Helper (Showing %d/%d)", #self.quests, self.totalQuestCount)
+        end
+        self.frame:SetTitle(titleText)
+    end
     
     local AceGUI = LibStub("AceGUI-3.0")
     
