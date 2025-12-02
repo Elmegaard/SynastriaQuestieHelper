@@ -487,47 +487,47 @@ function SynastriaQuestieHelper:UpdateQuestList()
                     local rewards = chainRewards[chainQuest.id]
                     if rewards and #rewards > 0 then
                         for _, reward in ipairs(rewards) do
-                            local itemGroup = AceGUI:Create("SimpleGroup")
-                            itemGroup:SetFullWidth(true)
-                            itemGroup:SetLayout("Flow")
+                            local itemIcon = AceGUI:Create("Icon")
+                            local itemName, itemLink, itemQuality, _, _, _, _, _, _, itemTexture = GetItemInfo(reward.id)
                             
-                            -- Indentation spacer
-                            local spacer = AceGUI:Create("Label")
-                            spacer:SetText("      ")
-                            spacer:SetRelativeWidth(0.15)
-                            itemGroup:AddChild(spacer)
-                            
-                            -- Interactive item link
-                            local itemBtn = AceGUI:Create("InteractiveLabel")
-                            local itemName, itemLink = GetItemInfo(reward.id)
-                            
-                            if itemLink then
-                                -- Add choice indicator
-                                local displayText
+                            if itemTexture then
+                                itemIcon:SetImage(itemTexture)
+                                itemIcon:SetImageSize(32, 32)
+                                itemIcon:SetWidth(40)
+                                
+                                -- Set label for choice indicator
                                 if reward.isChoice then
-                                    displayText = "[Choice] " .. itemLink
+                                    itemIcon:SetLabel("[Choice]")
                                 else
-                                    displayText = itemLink
+                                    itemIcon:SetLabel("")
                                 end
-                                itemBtn:SetText(displayText)
-                                itemBtn:SetColor(0.9, 0.9, 0.9) -- Light color for rewards
+                                
+                                -- Hover shows tooltip
+                                itemIcon:SetCallback("OnEnter", function(widget)
+                                    GameTooltip:SetOwner(widget.frame, "ANCHOR_CURSOR")
+                                    GameTooltip:SetHyperlink("item:" .. reward.id)
+                                    GameTooltip:Show()
+                                end)
+                                
+                                itemIcon:SetCallback("OnLeave", function()
+                                    GameTooltip:Hide()
+                                end)
+                                
+                                -- Click for item ref
+                                itemIcon:SetCallback("OnClick", function(widget, _, button)
+                                    if itemLink then
+                                        SetItemRef("item:" .. reward.id, itemLink, button)
+                                    end
+                                end)
                             else
-                                itemBtn:SetText("[Loading...]")
-                                itemBtn:SetColor(0.7, 0.7, 0.7)
+                                -- Loading placeholder
+                                itemIcon:SetImage("Interface\\Icons\\INV_Misc_QuestionMark")
+                                itemIcon:SetImageSize(32, 32)
+                                itemIcon:SetWidth(40)
+                                itemIcon:SetLabel("[Loading]")
                             end
                             
-                            itemBtn:SetRelativeWidth(0.85)
-                            itemBtn:SetCallback("OnEnter", function(widget)
-                                GameTooltip:SetOwner(widget.frame, "ANCHOR_CURSOR")
-                                GameTooltip:SetHyperlink("item:" .. reward.id)
-                                GameTooltip:Show()
-                            end)
-                            itemBtn:SetCallback("OnLeave", function()
-                                GameTooltip:Hide()
-                            end)
-                            itemGroup:AddChild(itemBtn)
-                            
-                            self.scroll:AddChild(itemGroup)
+                            self.scroll:AddChild(itemIcon)
                         end
                     end
                 end
