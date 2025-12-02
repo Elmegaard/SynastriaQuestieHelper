@@ -486,18 +486,22 @@ function SynastriaQuestieHelper:UpdateQuestList()
                     -- Show rewards if this quest has any
                     local rewards = chainRewards[chainQuest.id]
                     if rewards and #rewards > 0 then
+                        local rewardGroup = AceGUI:Create("SimpleGroup")
+                        rewardGroup:SetLayout("Flow")
+                        rewardGroup:SetFullWidth(true)
+                        
                         for _, reward in ipairs(rewards) do
                             local itemIcon = AceGUI:Create("Icon")
                             local itemName, itemLink, itemQuality, _, _, _, _, _, _, itemTexture = GetItemInfo(reward.id)
                             
                             if itemTexture then
                                 itemIcon:SetImage(itemTexture)
-                                itemIcon:SetImageSize(32, 32)
-                                itemIcon:SetWidth(40)
+                                itemIcon:SetImageSize(16, 16)
+                                itemIcon:SetWidth(24)
                                 
                                 -- Set label for choice indicator
                                 if reward.isChoice then
-                                    itemIcon:SetLabel("[Choice]")
+                                    itemIcon:SetLabel("[C]")
                                 else
                                     itemIcon:SetLabel("")
                                 end
@@ -522,13 +526,15 @@ function SynastriaQuestieHelper:UpdateQuestList()
                             else
                                 -- Loading placeholder
                                 itemIcon:SetImage("Interface\\Icons\\INV_Misc_QuestionMark")
-                                itemIcon:SetImageSize(32, 32)
-                                itemIcon:SetWidth(40)
-                                itemIcon:SetLabel("[Loading]")
+                                itemIcon:SetImageSize(16, 16)
+                                itemIcon:SetWidth(24)
+                                itemIcon:SetLabel("[?]")
                             end
                             
-                            self.scroll:AddChild(itemIcon)
+                            rewardGroup:AddChild(itemIcon)
                         end
+                        
+                        self.scroll:AddChild(rewardGroup)
                     end
                 end
             end
