@@ -7,6 +7,7 @@
 ## Requirements
 
 - **Questie Addon**: Required for quest database and coordinate lookups https://github.com/Netrinil/Questie-335
+- **\[Optional\] TomTom Addon**: If TomTom is installed, it will add a waypoint when clicking the coordinates.
 
 ---
 
@@ -37,6 +38,11 @@
 ### Version 1.0
 
 - Initial release
+
+### Version 1.1
+
+- Fixed error
+- Added TomTom support
 
 ---
 
