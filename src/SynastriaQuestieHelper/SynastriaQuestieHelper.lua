@@ -151,6 +151,25 @@ function SynastriaQuestieHelper:ResetFramePosition()
     self:Print("Frame position reset. Open the UI again to see the default position.")
 end
 
+function SynastriaQuestieHelper:AddTomTomWaypoint(x, y, title)
+    -- Check if TomTom is available
+    if TomTom then
+        local uid = TomTom:AddWaypoint(x, y, title or "Quest Location", false, true, true)
+        
+        if uid then
+            -- Set the crazy arrow to point to this waypoint
+            if TomTom.profile and TomTom.profile.arrow and TomTom.profile.arrow.arrival then
+                TomTom:SetCrazyArrow(uid, TomTom.profile.arrow.arrival, title)
+            end
+        else
+            self:Print("Failed to add waypoint. Make sure you're in the correct zone.")
+        end
+    else
+        -- Fallback to chat message if TomTom not available
+        self:Print(string.format("TomTom not found. Location: %.1f, %.1f", x, y))
+    end
+end
+
 function SynastriaQuestieHelper:ScanQuests()
     if self.isScanning then
         self:Print("Scan already in progress.")
@@ -657,10 +676,12 @@ function SynastriaQuestieHelper:UpdateQuestList()
                     
                     -- Add coordinates for available quests
                     local questText = chainQuest.name
+                    local coordX, coordY, coordZone
                     if status == "available" then
                         local x, y, zoneId = self:GetQuestStarterCoords(chainQuest.id)
                         if x and y then
-                            questText = string.format("%s (%.1f, %.1f)", chainQuest.name, x, y)
+                            questText = string.format("%s [%.1f, %.1f]", chainQuest.name, x, y)
+                            coordX, coordY, coordZone = x, y, zoneId
                         end
                     end
                     
@@ -676,6 +697,32 @@ function SynastriaQuestieHelper:UpdateQuestList()
                         chainLabel:SetColor(1, 1, 0) -- Yellow
                     else -- unavailable
                         chainLabel:SetColor(0.8, 0.4, 0.4) -- Muted red
+                    end
+                    
+                    -- Make label clickable for TomTom waypoint
+                    if coordX and coordY and coordZone then
+                        -- Access the actual label frame from AceGUI widget
+                        local labelFrame = chainLabel.frame
+                        if labelFrame then
+                            labelFrame:EnableMouse(true)
+                            labelFrame:SetScript("OnMouseDown", function(frame, button)
+                                if button == "LeftButton" then
+                                    self:AddTomTomWaypoint(coordX, coordY, chainQuest.name)
+                                end
+                            end)
+                            labelFrame:SetScript("OnEnter", function(frame)
+                                local label = frame:GetChildren()
+                                if label then
+                                    label:SetAlpha(0.7)
+                                end
+                            end)
+                            labelFrame:SetScript("OnLeave", function(frame)
+                                local label = frame:GetChildren()
+                                if label then
+                                    label:SetAlpha(1.0)
+                                end
+                            end)
+                        end
                     end
                     
                     self.scroll:AddChild(chainLabel)
