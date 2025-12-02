@@ -157,65 +157,37 @@ function SynastriaQuestieHelper:CHAT_MSG_SYSTEM(event, message)
     end
 end
 
--- Get quest rewards from Questie data or WoW API
-function SynastriaQuestieHelper:GetQuestRewards(questId)
-    -- Check if Questie has the data
-    if self.QuestieDB and self.QuestieDB.GetQuest then
-        local success, questData = pcall(function() return self.QuestieDB.GetQuest(questId) end)
-        if success and questData then
-            local rewards = {}
-            
-            -- Debug: Print ALL fields for this quest (only once per quest)
-            if not self.debuggedQuests then
-                self.debuggedQuests = {}
-            end
-            if not self.debuggedQuests[questId] then
-                self:Print("=== Quest " .. questId .. " ALL fields ===")
-                for k, v in pairs(questData) do
-                    self:Print("  " .. k .. " = " .. type(v))
-                    if type(v) == "table" then
-                        local count = 0
-                        for _ in pairs(v) do count = count + 1 end
-                        self:Print("    (table with " .. count .. " entries)")
-                        -- Print first few entries
-                        local i = 0
-                        for kk, vv in pairs(v) do
-                            if i < 3 then
-                                self:Print("      [" .. tostring(kk) .. "] = " .. tostring(vv))
-                                i = i + 1
-                            end
-                        end
-                    end
+-- Get quest rewards by searching the item database
+-- Returns a table of item IDs that list this quest as a reward
+function SynastriaQuestieHelper:GetQuestRewardsFromItemDB(questId)
+    local rewards = {}
+    
+    -- Lazy-load QuestieDB
+    if not self.QuestieDB and QuestieLoader then
+        self.QuestieDB = QuestieLoader:ImportModule("QuestieDB")
+    end
+    
+    if not self.QuestieDB or not self.QuestieDB.ItemPointers then
+        return rewards
+    end
+    
+    -- Iterate through all items and check if they reward this quest
+    for itemId, _ in pairs(self.QuestieDB.ItemPointers) do
+        local questRewards = self.QuestieDB.QueryItemSingle(itemId, "questRewards")
+        if questRewards and type(questRewards) == "table" then
+            for _, rewardQuestId in ipairs(questRewards) do
+                if rewardQuestId == questId then
+                    table.insert(rewards, {id = itemId, isChoice = false})
+                    break
                 end
-                self.debuggedQuests[questId] = true
-            end
-            
-            -- Try various possible field names for rewards
-            local fieldNames = {"RewChoiceItems", "RewItemId", "itemChoices", "itemRewards", 
-                               "rewardItem", "rewardItems", "choiceReward", "choiceRewards"}
-            
-            for _, fieldName in ipairs(fieldNames) do
-                local field = questData[fieldName]
-                if field and type(field) == "table" then
-                    for _, item in ipairs(field) do
-                        local itemId = type(item) == "table" and item[1] or item
-                        if type(itemId) == "number" then
-                            table.insert(rewards, {id = itemId, type = "unknown"})
-                        end
-                    end
-                end
-            end
-            
-            if #rewards > 0 then
-                return rewards
             end
         end
     end
     
-    return nil
+    return rewards
 end
 
--- Get the full quest chain leading to this quest
+-- Get the full quest chain leading to this quest using Questie
 function SynastriaQuestieHelper:GetQuestChain(questId)
     local chain = {}
     local current = questId
@@ -235,26 +207,15 @@ function SynastriaQuestieHelper:GetQuestChain(questId)
     
     while current and not visited[current] do
         visited[current] = true
-        local questInfo = nil
         
-        -- Check Questie first (primary source)
-        if self.QuestieDB then
-            local questData = nil
+        if self.QuestieDB and self.QuestieDB.GetQuest then
+            local success, questData = pcall(function() return self.QuestieDB.GetQuest(current) end)
             
-            -- Use GetQuest with correct syntax (dot, not colon)
-            if self.QuestieDB.GetQuest then
-                local success, result = pcall(function() return self.QuestieDB.GetQuest(current) end)
-                if success and result then
-                    questData = result
-                end
-            end
-            
-            if questData then
+            if success and questData then
                 -- preQuestSingle might be a table with quest IDs
                 local preQuest = nil
                 if questData.preQuestSingle then
                     if type(questData.preQuestSingle) == "table" then
-                        -- Get first element
                         preQuest = questData.preQuestSingle[1]
                     else
                         preQuest = questData.preQuestSingle
@@ -263,23 +224,16 @@ function SynastriaQuestieHelper:GetQuestChain(questId)
                     preQuest = questData.preQuestGroup[1]
                 end
                 
-                questInfo = {
-                    name = questData.name or questData.Name or "Unknown",
-                    preQuest = preQuest
-                }
+                table.insert(chain, 1, { 
+                    id = current, 
+                    name = questData.name or "Unknown"
+                })
+                current = preQuest
+            else
+                -- Failed to get quest data
+                break
             end
-        end
-        
-        -- Fallback to local database (for custom/missing quests)
-        if not questInfo and self.QuestDB then
-            questInfo = self.QuestDB[current]
-        end
-        
-        if questInfo then
-            table.insert(chain, 1, { id = current, name = questInfo.name })
-            current = questInfo.preQuest
         else
-            -- No chain data available
             break
         end
     end
@@ -381,6 +335,55 @@ function SynastriaQuestieHelper:GetQuestStatus(questId)
     return "available"
 end
 
+-- Helper to get rewards from quest log if quest is accepted
+function SynastriaQuestieHelper:GetQuestLogRewards(questId)
+    local rewards = {}
+    
+    local numEntries = GetNumQuestLogEntries()
+    for i = 1, numEntries do
+        local title, level, questTag, suggestedGroup, isHeader, isCollapsed, isComplete, isDaily, qId = GetQuestLogTitle(i)
+        if not isHeader and qId == questId then
+            -- Select this quest to query rewards
+            SelectQuestLogEntry(i)
+            
+            -- Get choice rewards (player picks one)
+            local numChoices = GetNumQuestLogChoices()
+            for j = 1, numChoices do
+                local name, texture, numItems, quality, isUsable = GetQuestLogChoiceInfo(j)
+                if name then
+                    -- Extract item ID from the link
+                    local itemLink = GetQuestLogItemLink("choice", j)
+                    if itemLink then
+                        local itemId = tonumber(itemLink:match("item:(%d+)"))
+                        if itemId then
+                            table.insert(rewards, {id = itemId, isChoice = true})
+                        end
+                    end
+                end
+            end
+            
+            -- Get fixed rewards (player gets all)
+            local numRewards = GetNumQuestLogRewards()
+            for j = 1, numRewards do
+                local name, texture, numItems, quality, isUsable = GetQuestLogRewardInfo(j)
+                if name then
+                    local itemLink = GetQuestLogItemLink("reward", j)
+                    if itemLink then
+                        local itemId = tonumber(itemLink:match("item:(%d+)"))
+                        if itemId then
+                            table.insert(rewards, {id = itemId, isChoice = false})
+                        end
+                    end
+                end
+            end
+            
+            break
+        end
+    end
+    
+    return rewards
+end
+
 function SynastriaQuestieHelper:UpdateQuestList()
     if not self.scroll then return end
     self.scroll:ReleaseChildren()
@@ -397,22 +400,19 @@ function SynastriaQuestieHelper:UpdateQuestList()
         local chain = self:GetQuestChain(quest.id)
         
         if #chain > 1 then
-            -- Find the quest from the scan results that's in this chain (should be the last one)
-            local questWithReward = nil
-            for _, q in ipairs(self.quests) do
-                for _, chainQuest in ipairs(chain) do
-                    if q.id == chainQuest.id then
-                        questWithReward = q.id
-                    end
-                end
-            end
-            
             -- Get rewards for quests in the chain
             local chainRewards = {}
             for _, chainQuest in ipairs(chain) do
-                local rewards = self:GetQuestRewards(chainQuest.id)
-                if rewards then
-                    chainRewards[chainQuest.id] = rewards
+                -- Get rewards from quest log if accepted
+                local logRewards = self:GetQuestLogRewards(chainQuest.id)
+                -- Get rewards from item database
+                local itemDBRewards = self:GetQuestRewardsFromItemDB(chainQuest.id)
+                
+                -- Merge rewards, preferring quest log data when available
+                if logRewards and #logRewards > 0 then
+                    chainRewards[chainQuest.id] = logRewards
+                elseif itemDBRewards and #itemDBRewards > 0 then
+                    chainRewards[chainQuest.id] = itemDBRewards
                 end
             end
             
@@ -466,15 +466,21 @@ function SynastriaQuestieHelper:UpdateQuestList()
                             rewardGroup:SetFullWidth(true)
                             rewardGroup:SetLayout("Flow")
                             
+                            local rewardLabel = AceGUI:Create("Label")
+                            rewardLabel:SetText("    Rewards: ")
+                            rewardLabel:SetRelativeWidth(0.2)
+                            rewardGroup:AddChild(rewardLabel)
+                            
                             for _, reward in ipairs(rewards) do
                                 local itemBtn = AceGUI:Create("InteractiveLabel")
                                 local itemName, itemLink = GetItemInfo(reward.id)
                                 if itemLink then
-                                    itemBtn:SetText("    " .. itemLink)
+                                    local prefix = reward.isChoice and "[C] " or ""
+                                    itemBtn:SetText(prefix .. itemLink)
                                 else
-                                    itemBtn:SetText("    [Item " .. reward.id .. "]")
+                                    itemBtn:SetText("[Item " .. reward.id .. "]")
                                 end
-                                itemBtn:SetRelativeWidth(1)
+                                itemBtn:SetRelativeWidth(0.8)
                                 itemBtn:SetCallback("OnEnter", function(widget)
                                     GameTooltip:SetOwner(widget.frame, "ANCHOR_CURSOR")
                                     GameTooltip:SetHyperlink("item:" .. reward.id)
