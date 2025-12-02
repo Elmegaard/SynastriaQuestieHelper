@@ -177,7 +177,10 @@ function SynastriaQuestieHelper:GetQuestRewardsFromItemDB(questId)
         if questRewards and type(questRewards) == "table" then
             for _, rewardQuestId in ipairs(questRewards) do
                 if rewardQuestId == questId then
-                    table.insert(rewards, {id = itemId, isChoice = false})
+                    -- Only add attunable items
+                    if SynastriaCoreLib and SynastriaCoreLib.IsAttunable(itemId) then
+                        table.insert(rewards, {id = itemId, isChoice = false})
+                    end
                     break
                 end
             end
@@ -355,7 +358,7 @@ function SynastriaQuestieHelper:GetQuestLogRewards(questId)
                     local itemLink = GetQuestLogItemLink("choice", j)
                     if itemLink then
                         local itemId = tonumber(itemLink:match("item:(%d+)"))
-                        if itemId then
+                        if itemId and SynastriaCoreLib and SynastriaCoreLib.IsAttunable(itemId) then
                             table.insert(rewards, {id = itemId, isChoice = true})
                         end
                     end
@@ -370,7 +373,7 @@ function SynastriaQuestieHelper:GetQuestLogRewards(questId)
                     local itemLink = GetQuestLogItemLink("reward", j)
                     if itemLink then
                         local itemId = tonumber(itemLink:match("item:(%d+)"))
-                        if itemId then
+                        if itemId and SynastriaCoreLib and SynastriaCoreLib.IsAttunable(itemId) then
                             table.insert(rewards, {id = itemId, isChoice = false})
                         end
                     end
