@@ -9,6 +9,7 @@ local CHAT_MSG_SYSTEM = "CHAT_MSG_SYSTEM"
 SynastriaQuestieHelper.quests = {}
 SynastriaQuestieHelper.totalQuestCount = 0
 SynastriaQuestieHelper.isScanning = false
+SynastriaQuestieHelper.isLoading = false
 
 function SynastriaQuestieHelper:OnInitialize()
     self.db = LibStub("AceDB-3.0"):New("SynastriaQuestieHelperDB", {
@@ -131,9 +132,13 @@ function SynastriaQuestieHelper:ScanQuests()
     end
 
     self.isScanning = true
+    self.isLoading = true
     self.quests = {} -- Clear previous results
     self.totalQuestCount = 0 -- Reset total count
     self:RegisterEvent(CHAT_MSG_SYSTEM)
+    
+    -- Update UI to show loading state
+    self:UpdateQuestList()
     
     -- Send the command to the server
     SendChatMessage(".findquest old", "SAY")
@@ -146,6 +151,7 @@ end
 
 function SynastriaQuestieHelper:StopScanning()
     self.isScanning = false
+    self.isLoading = false
     self.lastScanTime = GetTime() -- Record scan time for cooldown
     self:UnregisterEvent(CHAT_MSG_SYSTEM)
     self:Print("Scan complete. Found " .. #self.quests .. " quests.")
@@ -532,6 +538,17 @@ function SynastriaQuestieHelper:UpdateQuestList()
     end
     
     local AceGUI = LibStub("AceGUI-3.0")
+    
+    -- Show loading message if scanning
+    if self.isLoading then
+        local loadingLabel = AceGUI:Create("Label")
+        loadingLabel:SetText("Loading...")
+        loadingLabel:SetFullWidth(true)
+        loadingLabel:SetColor(1, 1, 1)
+        loadingLabel:SetFont(GameFontNormal:GetFont(), 14, "OUTLINE")
+        self.scroll:AddChild(loadingLabel)
+        return
+    end
     
     for _, quest in ipairs(self.quests) do
         -- Get quest chain
