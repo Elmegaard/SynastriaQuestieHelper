@@ -278,6 +278,10 @@ function SynastriaQuestieHelper:CreateUI()
     frame:SetWidth(500)
     frame:SetHeight(400)
     
+    -- Make frame closable with ESC key
+    _G["SynastriaQuestieHelperFrame"] = frame.frame
+    tinsert(UISpecialFrames, "SynastriaQuestieHelperFrame")
+    
     self.frame = frame
     
     -- Scan Button
@@ -401,11 +405,6 @@ function SynastriaQuestieHelper:UpdateQuestList()
     
     local AceGUI = LibStub("AceGUI-3.0")
     
-    -- Initialize collapsed chains table
-    if not self.db.profile.collapsedChains then
-        self.db.profile.collapsedChains = {}
-    end
-    
     for _, quest in ipairs(self.quests) do
         -- Get quest chain
         local chain = self:GetQuestChain(quest.id)
@@ -431,33 +430,27 @@ function SynastriaQuestieHelper:UpdateQuestList()
             end
         end
         
-        -- Create header button for collapsing
-        local headerBtn = AceGUI:Create("InteractiveLabel")
-        local isCollapsed = self.db.profile.collapsedChains[quest.id]
-        local expandIcon = isCollapsed and "[+]" or "[-]"
+        -- Create simplified header (no collapse functionality)
+        local headerLabel = AceGUI:Create("Label")
         local rewardCount = 0
         for _ in pairs(chainRewards) do rewardCount = rewardCount + 1 end
         
         -- Simplified header with reward count if applicable
         local headerText
         if rewardCount > 0 then
-            headerText = string.format("%s %s (Chain: %d quests, %d with rewards)", expandIcon, quest.name, #chain, rewardCount)
+            headerText = string.format("%s (Chain: %d quests, %d with rewards)", quest.name, #chain, rewardCount)
         else
-            headerText = string.format("%s %s (Chain: %d quests)", expandIcon, quest.name, #chain)
+            headerText = string.format("%s (Chain: %d quests)", quest.name, #chain)
         end
         
-        headerBtn:SetText(headerText)
-        headerBtn:SetFullWidth(true)
-        headerBtn:SetColor(1, 0.82, 0) -- Gold color for header
-        headerBtn:SetCallback("OnClick", function()
-            self.db.profile.collapsedChains[quest.id] = not self.db.profile.collapsedChains[quest.id]
-            self:UpdateQuestList()
-        end)
-        self.scroll:AddChild(headerBtn)
+        headerLabel:SetText(headerText)
+        headerLabel:SetFullWidth(true)
+        headerLabel:SetColor(1, 0.82, 0) -- Gold color for header
+        headerLabel:SetFont(GameFontNormal:GetFont(), 14, "OUTLINE")
+        self.scroll:AddChild(headerLabel)
         
-        -- Only show chain if not collapsed
-        if not isCollapsed then
-            for i, chainQuest in ipairs(chain) do
+        -- Always show chain (no collapse)
+        for i, chainQuest in ipairs(chain) do
                 local status = self:GetQuestStatus(chainQuest.id)
                 
                 -- Check if we should hide completed quests
@@ -544,6 +537,5 @@ function SynastriaQuestieHelper:UpdateQuestList()
             spacer:SetText(" ")
             spacer:SetFullWidth(true)
             self.scroll:AddChild(spacer)
-        end
     end
 end
