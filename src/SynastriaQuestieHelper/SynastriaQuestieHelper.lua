@@ -402,124 +402,121 @@ function SynastriaQuestieHelper:UpdateQuestList()
         -- Get quest chain
         local chain = self:GetQuestChain(quest.id)
         
-        if #chain > 1 then
-            -- Get rewards for quests in the chain
-            local chainRewards = {}
-            for _, chainQuest in ipairs(chain) do
-                -- Get rewards from quest log if accepted
-                local logRewards = self:GetQuestLogRewards(chainQuest.id)
-                -- Get rewards from item database
-                local itemDBRewards = self:GetQuestRewardsFromItemDB(chainQuest.id)
+        -- If no chain found, create a single-item chain
+        if #chain == 0 then
+            chain = {{id = quest.id, name = quest.name}}
+        end
+        
+        -- Get rewards for quests in the chain
+        local chainRewards = {}
+        for _, chainQuest in ipairs(chain) do
+            -- Get rewards from quest log if accepted
+            local logRewards = self:GetQuestLogRewards(chainQuest.id)
+            -- Get rewards from item database
+            local itemDBRewards = self:GetQuestRewardsFromItemDB(chainQuest.id)
+            
+            -- Merge rewards, preferring quest log data when available
+            if logRewards and #logRewards > 0 then
+                chainRewards[chainQuest.id] = logRewards
+            elseif itemDBRewards and #itemDBRewards > 0 then
+                chainRewards[chainQuest.id] = itemDBRewards
+            end
+        end
+        
+        -- Create header button for collapsing
+        local headerBtn = AceGUI:Create("InteractiveLabel")
+        local isCollapsed = self.db.profile.collapsedChains[quest.id]
+        local expandIcon = isCollapsed and "[+]" or "[-]"
+        local rewardCount = 0
+        for _ in pairs(chainRewards) do rewardCount = rewardCount + 1 end
+        
+        -- Simplified header with reward count if applicable
+        local headerText
+        if rewardCount > 0 then
+            headerText = string.format("%s %s (Chain: %d quests, %d with rewards)", expandIcon, quest.name, #chain, rewardCount)
+        else
+            headerText = string.format("%s %s (Chain: %d quests)", expandIcon, quest.name, #chain)
+        end
+        
+        headerBtn:SetText(headerText)
+        headerBtn:SetFullWidth(true)
+        headerBtn:SetColor(1, 0.82, 0) -- Gold color for header
+        headerBtn:SetCallback("OnClick", function()
+            self.db.profile.collapsedChains[quest.id] = not self.db.profile.collapsedChains[quest.id]
+            self:UpdateQuestList()
+        end)
+        self.scroll:AddChild(headerBtn)
+        
+        -- Only show chain if not collapsed
+        if not isCollapsed then
+            for i, chainQuest in ipairs(chain) do
+                local status = self:GetQuestStatus(chainQuest.id)
                 
-                -- Merge rewards, preferring quest log data when available
-                if logRewards and #logRewards > 0 then
-                    chainRewards[chainQuest.id] = logRewards
-                elseif itemDBRewards and #itemDBRewards > 0 then
-                    chainRewards[chainQuest.id] = itemDBRewards
-                end
-            end
-            
-            -- Create header button for collapsing
-            local headerBtn = AceGUI:Create("InteractiveLabel")
-            local isCollapsed = self.db.profile.collapsedChains[quest.id]
-            local expandIcon = isCollapsed and "[+]" or "[-]"
-            local rewardCount = 0
-            for _ in pairs(chainRewards) do rewardCount = rewardCount + 1 end
-            
-            -- Simplified header with reward count if applicable
-            local headerText
-            if rewardCount > 0 then
-                headerText = string.format("%s %s (Chain: %d quests, %d with rewards)", expandIcon, quest.name, #chain, rewardCount)
-            else
-                headerText = string.format("%s %s (Chain: %d quests)", expandIcon, quest.name, #chain)
-            end
-            
-            headerBtn:SetText(headerText)
-            headerBtn:SetFullWidth(true)
-            headerBtn:SetColor(1, 0.82, 0) -- Gold color for header
-            headerBtn:SetCallback("OnClick", function()
-                self.db.profile.collapsedChains[quest.id] = not self.db.profile.collapsedChains[quest.id]
-                self:UpdateQuestList()
-            end)
-            self.scroll:AddChild(headerBtn)
-            
-            -- Only show chain if not collapsed
-            if not isCollapsed then
-                for i, chainQuest in ipairs(chain) do
-                    local status = self:GetQuestStatus(chainQuest.id)
+                -- Check if we should hide completed quests
+                if not (self.db.profile.hideCompleted and status == "completed") then
+                    local chainLabel = AceGUI:Create("Label")
                     
-                    -- Check if we should hide completed quests
-                    if not (self.db.profile.hideCompleted and status == "completed") then
-                        local chainLabel = AceGUI:Create("Label")
-                        
-                        -- Use numbers for all quests in chain
-                        local prefix = string.format("  %d. ", i)
-                        
-                        chainLabel:SetText(prefix .. chainQuest.name)
-                        chainLabel:SetFullWidth(true)
-                        
-                        -- Color based on status
-                        if status == "completed" then
-                            chainLabel:SetColor(0.6, 0.6, 0.6) -- Light gray
-                        elseif status == "accepted" then
-                            chainLabel:SetColor(0, 1, 0) -- Green
-                        elseif status == "available" then
-                            chainLabel:SetColor(1, 1, 0) -- Yellow
-                        else -- unavailable
-                            chainLabel:SetColor(0.8, 0.4, 0.4) -- Muted red
-                        end
-                        
-                        self.scroll:AddChild(chainLabel)
-                        
-                        -- Show rewards if this quest has any
-                        local rewards = chainRewards[chainQuest.id]
-                        if rewards and #rewards > 0 then
-                            for _, reward in ipairs(rewards) do
-                                local itemBtn = AceGUI:Create("InteractiveLabel")
-                                local itemName, itemLink = GetItemInfo(reward.id)
-                                
-                                if itemLink then
-                                    -- Add indentation and choice indicator
-                                    local displayText
-                                    if reward.isChoice then
-                                        displayText = "      [Choice] " .. itemLink
-                                    else
-                                        displayText = "      " .. itemLink
-                                    end
-                                    itemBtn:SetText(displayText)
-                                    itemBtn:SetColor(0.9, 0.9, 0.9) -- Light color for rewards
+                    -- Use numbers for all quests in chain
+                    local prefix = string.format("  %d. ", i)
+                    
+                    chainLabel:SetText(prefix .. chainQuest.name)
+                    chainLabel:SetFullWidth(true)
+                    
+                    -- Color based on status
+                    if status == "completed" then
+                        chainLabel:SetColor(0.6, 0.6, 0.6) -- Light gray
+                    elseif status == "accepted" then
+                        chainLabel:SetColor(0, 1, 0) -- Green
+                    elseif status == "available" then
+                        chainLabel:SetColor(1, 1, 0) -- Yellow
+                    else -- unavailable
+                        chainLabel:SetColor(0.8, 0.4, 0.4) -- Muted red
+                    end
+                    
+                    self.scroll:AddChild(chainLabel)
+                    
+                    -- Show rewards if this quest has any
+                    local rewards = chainRewards[chainQuest.id]
+                    if rewards and #rewards > 0 then
+                        for _, reward in ipairs(rewards) do
+                            local itemBtn = AceGUI:Create("InteractiveLabel")
+                            local itemName, itemLink = GetItemInfo(reward.id)
+                            
+                            if itemLink then
+                                -- Add indentation and choice indicator
+                                local displayText
+                                if reward.isChoice then
+                                    displayText = "      [Choice] " .. itemLink
                                 else
-                                    itemBtn:SetText("      [Loading...]")
-                                    itemBtn:SetColor(0.7, 0.7, 0.7)
+                                    displayText = "      " .. itemLink
                                 end
-                                
-                                itemBtn:SetFullWidth(true)
-                                itemBtn:SetCallback("OnEnter", function(widget)
-                                    GameTooltip:SetOwner(widget.frame, "ANCHOR_CURSOR")
-                                    GameTooltip:SetHyperlink("item:" .. reward.id)
-                                    GameTooltip:Show()
-                                end)
-                                itemBtn:SetCallback("OnLeave", function()
-                                    GameTooltip:Hide()
-                                end)
-                                self.scroll:AddChild(itemBtn)
+                                itemBtn:SetText(displayText)
+                                itemBtn:SetColor(0.9, 0.9, 0.9) -- Light color for rewards
+                            else
+                                itemBtn:SetText("      [Loading...]")
+                                itemBtn:SetColor(0.7, 0.7, 0.7)
                             end
+                            
+                            itemBtn:SetFullWidth(true)
+                            itemBtn:SetCallback("OnEnter", function(widget)
+                                GameTooltip:SetOwner(widget.frame, "ANCHOR_CURSOR")
+                                GameTooltip:SetHyperlink("item:" .. reward.id)
+                                GameTooltip:Show()
+                            end)
+                            itemBtn:SetCallback("OnLeave", function()
+                                GameTooltip:Hide()
+                            end)
+                            self.scroll:AddChild(itemBtn)
                         end
                     end
                 end
-                
-                -- Add spacing between chains
-                local spacer = AceGUI:Create("Label")
-                spacer:SetText(" ")
-                spacer:SetFullWidth(true)
-                self.scroll:AddChild(spacer)
             end
-        else
-            -- No chain data, show as normal
-            local label = AceGUI:Create("Label")
-            label:SetText(string.format("[%d] %s", quest.id, quest.name))
-            label:SetFullWidth(true)
-            self.scroll:AddChild(label)
+            
+            -- Add spacing between chains
+            local spacer = AceGUI:Create("Label")
+            spacer:SetText(" ")
+            spacer:SetFullWidth(true)
+            self.scroll:AddChild(spacer)
         end
     end
 end
