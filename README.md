@@ -47,6 +47,7 @@
 - Added right click for wowhead url
 - Rewrote quest fetching to allow more than 10 quests
 - Fixed item icons not re-loading caching
+- Write (item) instead of coordinate when the quest is started from an item
 
 ### Version 1.1
 
