@@ -10,6 +10,7 @@ SynastriaQuestieHelper.quests = {}
 SynastriaQuestieHelper.totalQuestCount = 0
 SynastriaQuestieHelper.isScanning = false
 SynastriaQuestieHelper.isLoading = false
+SynastriaQuestieHelper.coordCache = {}
 
 function SynastriaQuestieHelper:OnInitialize()
     self.db = LibStub("AceDB-3.0"):New("SynastriaQuestieHelperDB", {
@@ -231,6 +232,16 @@ end
 function SynastriaQuestieHelper:GetQuestStarterCoords(questId)
     if not self.QuestieDB then return nil end
     
+    -- Check cache first
+    if self.coordCache[questId] ~= nil then
+        local cached = self.coordCache[questId]
+        if cached then
+            return cached.x, cached.y, cached.zoneId
+        else
+            return nil -- Cached negative result
+        end
+    end
+    
     -- Check NPCs first
     if self.QuestieDB.NPCPointers then
         for npcId in pairs(self.QuestieDB.NPCPointers) do
@@ -245,6 +256,8 @@ function SynastriaQuestieHelper:GetQuestStarterCoords(questId)
                             -- spawns is {[zoneId] = {{x,y}, {x,y}}}
                             for zoneId, coords in pairs(spawns) do
                                 if coords and coords[1] and coords[1][1] and coords[1][2] then
+                                    -- Cache the result
+                                    self.coordCache[questId] = {x = coords[1][1], y = coords[1][2], zoneId = zoneId}
                                     return coords[1][1], coords[1][2], zoneId
                                 end
                             end
@@ -270,6 +283,8 @@ function SynastriaQuestieHelper:GetQuestStarterCoords(questId)
                             -- spawns is {[zoneId] = {{x,y}, {x,y}}}
                             for zoneId, coords in pairs(spawns) do
                                 if coords and coords[1] and coords[1][1] and coords[1][2] then
+                                    -- Cache the result
+                                    self.coordCache[questId] = {x = coords[1][1], y = coords[1][2], zoneId = zoneId}
                                     return coords[1][1], coords[1][2], zoneId
                                 end
                             end
@@ -281,6 +296,8 @@ function SynastriaQuestieHelper:GetQuestStarterCoords(questId)
         end
     end
     
+    -- Cache nil result to avoid repeated lookups
+    self.coordCache[questId] = false
     return nil
 end
 
