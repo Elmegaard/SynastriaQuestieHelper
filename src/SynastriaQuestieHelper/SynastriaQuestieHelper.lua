@@ -425,9 +425,15 @@ function SynastriaQuestieHelper:UpdateQuestList()
             local expandIcon = isCollapsed and "[+]" or "[-]"
             local rewardCount = 0
             for _ in pairs(chainRewards) do rewardCount = rewardCount + 1 end
-            local headerText = rewardCount > 0 and 
-                string.format("%s [%d] %s (Chain: %d quests, %d with rewards)", expandIcon, quest.id, quest.name, #chain, rewardCount) or
-                string.format("%s [%d] %s (Chain: %d quests)", expandIcon, quest.id, quest.name, #chain)
+            
+            -- Simplified header with reward count if applicable
+            local headerText
+            if rewardCount > 0 then
+                headerText = string.format("%s %s (Chain: %d quests, %d with rewards)", expandIcon, quest.name, #chain, rewardCount)
+            else
+                headerText = string.format("%s %s (Chain: %d quests)", expandIcon, quest.name, #chain)
+            end
+            
             headerBtn:SetText(headerText)
             headerBtn:SetFullWidth(true)
             headerBtn:SetColor(1, 0.82, 0) -- Gold color for header
@@ -445,19 +451,22 @@ function SynastriaQuestieHelper:UpdateQuestList()
                     -- Check if we should hide completed quests
                     if not (self.db.profile.hideCompleted and status == "completed") then
                         local chainLabel = AceGUI:Create("Label")
-                        local prefix = i == #chain and "> " or "  "
-                        chainLabel:SetText(string.format("%s%d. [%d] %s", prefix, i, chainQuest.id, chainQuest.name))
+                        
+                        -- Use numbers for all quests in chain
+                        local prefix = string.format("  %d. ", i)
+                        
+                        chainLabel:SetText(prefix .. chainQuest.name)
                         chainLabel:SetFullWidth(true)
                         
                         -- Color based on status
                         if status == "completed" then
-                            chainLabel:SetColor(0.5, 0.5, 0.5) -- Gray
+                            chainLabel:SetColor(0.6, 0.6, 0.6) -- Light gray
                         elseif status == "accepted" then
-                            chainLabel:SetColor(0, 1, 0) -- Green (currently selected quest)
+                            chainLabel:SetColor(0, 1, 0) -- Green
                         elseif status == "available" then
                             chainLabel:SetColor(1, 1, 0) -- Yellow
                         else -- unavailable
-                            chainLabel:SetColor(1, 0, 0) -- Red
+                            chainLabel:SetColor(0.8, 0.4, 0.4) -- Muted red
                         end
                         
                         self.scroll:AddChild(chainLabel)
@@ -465,25 +474,26 @@ function SynastriaQuestieHelper:UpdateQuestList()
                         -- Show rewards if this quest has any
                         local rewards = chainRewards[chainQuest.id]
                         if rewards and #rewards > 0 then
-                            local rewardGroup = AceGUI:Create("SimpleGroup")
-                            rewardGroup:SetFullWidth(true)
-                            rewardGroup:SetLayout("Flow")
-                            
-                            local rewardLabel = AceGUI:Create("Label")
-                            rewardLabel:SetText("    Rewards: ")
-                            rewardLabel:SetRelativeWidth(0.2)
-                            rewardGroup:AddChild(rewardLabel)
-                            
                             for _, reward in ipairs(rewards) do
                                 local itemBtn = AceGUI:Create("InteractiveLabel")
                                 local itemName, itemLink = GetItemInfo(reward.id)
+                                
                                 if itemLink then
-                                    local prefix = reward.isChoice and "[C] " or ""
-                                    itemBtn:SetText(prefix .. itemLink)
+                                    -- Add indentation and choice indicator
+                                    local displayText
+                                    if reward.isChoice then
+                                        displayText = "      [Choice] " .. itemLink
+                                    else
+                                        displayText = "      " .. itemLink
+                                    end
+                                    itemBtn:SetText(displayText)
+                                    itemBtn:SetColor(0.9, 0.9, 0.9) -- Light color for rewards
                                 else
-                                    itemBtn:SetText("[Item " .. reward.id .. "]")
+                                    itemBtn:SetText("      [Loading...]")
+                                    itemBtn:SetColor(0.7, 0.7, 0.7)
                                 end
-                                itemBtn:SetRelativeWidth(0.8)
+                                
+                                itemBtn:SetFullWidth(true)
                                 itemBtn:SetCallback("OnEnter", function(widget)
                                     GameTooltip:SetOwner(widget.frame, "ANCHOR_CURSOR")
                                     GameTooltip:SetHyperlink("item:" .. reward.id)
@@ -492,13 +502,17 @@ function SynastriaQuestieHelper:UpdateQuestList()
                                 itemBtn:SetCallback("OnLeave", function()
                                     GameTooltip:Hide()
                                 end)
-                                rewardGroup:AddChild(itemBtn)
+                                self.scroll:AddChild(itemBtn)
                             end
-                            
-                            self.scroll:AddChild(rewardGroup)
                         end
                     end
                 end
+                
+                -- Add spacing between chains
+                local spacer = AceGUI:Create("Label")
+                spacer:SetText(" ")
+                spacer:SetFullWidth(true)
+                self.scroll:AddChild(spacer)
             end
         else
             -- No chain data, show as normal
