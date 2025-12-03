@@ -624,18 +624,9 @@ function SynastriaQuestieHelper:CreateUI()
         frame:SetHeight(400)
     end
     
-    -- Handle ESC key manually for proper layering
-    frame.frame:EnableKeyboard(true)
-    frame.frame:SetScript("OnKeyDown", function(self, key)
-        if key == "ESCAPE" then
-            -- Check if URL popup is open first
-            if SynastriaQuestieHelper.urlPopup and SynastriaQuestieHelper.urlPopup:IsVisible() then
-                SynastriaQuestieHelper.urlPopup:Hide()
-            else
-                frame:Hide()
-            end
-        end
-    end)
+    -- Make frame closable with ESC without blocking keyboard input
+    _G["SynastriaQuestieHelperMainFrame"] = frame.frame
+    tinsert(UISpecialFrames, "SynastriaQuestieHelperMainFrame")
     
     self.frame = frame
     
