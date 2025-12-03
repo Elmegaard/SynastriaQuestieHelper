@@ -271,22 +271,41 @@ function SynastriaQuestieHelper:ResetFramePosition()
     self:Print("Frame position reset. Open the UI again to see the default position.")
 end
 
-function SynastriaQuestieHelper:AddTomTomWaypoint(x, y, title)
+function SynastriaQuestieHelper:AddTomTomWaypoint(x, y, zoneId, title)
     -- Check if TomTom is available
-    if TomTom then
-        local uid = TomTom:AddWaypoint(x, y, title or "Quest Location", false, true, true)
+    if not TomTom then
+        self:Print("TomTom is not installed or loaded.")
+        return
+    end
+    
+    -- Always get zone name (for both current and cross-zone)
+    local zoneName = self:GetZoneName(zoneId)
+    
+    if zoneName then
+        -- Execute TomTom's /way command directly with zone name
+        local wayCmd = string.format("%s %.1f %.1f %s", zoneName, x, y, title or "")
+        SlashCmdList["TOMTOM_WAY"](wayCmd)
         
-        if uid then
-            -- Set the crazy arrow to point to this waypoint
-            if TomTom.profile and TomTom.profile.arrow and TomTom.profile.arrow.arrival then
-                TomTom:SetCrazyArrow(uid, TomTom.profile.arrow.arrival, title)
+        -- Find the waypoint and set crazy arrow
+        self:ScheduleTimer(function()
+            if TomTom.waypoints then
+                -- Look for a waypoint matching our coordinates and title
+                for uid, data in pairs(TomTom.waypoints) do
+                    if data.title == (title or "") and 
+                       data.x and data.y and
+                       math.abs(data.x - x) < 0.5 and 
+                       math.abs(data.y - y) < 0.5 then
+                        -- Found our waypoint, set the arrow
+                        if TomTom.profile and TomTom.profile.arrow and TomTom.profile.arrow.arrival then
+                            TomTom:SetCrazyArrow(uid, TomTom.profile.arrow.arrival, title)
+                        end
+                        break
+                    end
+                end
             end
-        else
-            self:Print("Failed to add waypoint. Make sure you're in the correct zone.")
-        end
+        end, 0.1)
     else
-        -- Fallback to chat message if TomTom not available
-        self:Print(string.format("TomTom not found. Location: %.1f, %.1f", x, y))
+        self:Print(string.format("Could not determine zone name. Coordinates: %.1f, %.1f", x, y))
     end
 end
 
@@ -1148,19 +1167,15 @@ function SynastriaQuestieHelper:UpdateQuestList()
                     if status == "available" and not isUnavailableToPlayer then
                         local x, y, zoneId = self:GetQuestStarterCoords(chainQuest.id)
                         if x and y and zoneId then
-                            -- Check if quest is in the current zone
-                            if zoneId == self.currentZoneId then
-                                -- Same zone - show coordinates
-                                questText = string.format("%s [%.1f, %.1f]", questText, x, y)
-                                coordX, coordY, coordZone = x, y, zoneId
+                            -- Always store coordinates for waypoint
+                            coordX, coordY, coordZone = x, y, zoneId
+                            
+                            -- Always show zone name with coordinates
+                            local zoneName = self:GetZoneName(zoneId)
+                            if zoneName then
+                                questText = string.format("%s [%.1f, %.1f] (%s)", questText, x, y, zoneName)
                             else
-                                -- Different zone - show zone name
-                                local zoneName = self:GetZoneName(zoneId)
-                                if zoneName then
-                                    questText = string.format("%s (%s)", questText, zoneName)
-                                else
-                                    questText = string.format("%s (Other Zone)", questText)
-                                end
+                                questText = string.format("%s [%.1f, %.1f]", questText, x, y)
                             end
                         else
                             questText = string.format("%s (item)", questText)
@@ -1188,7 +1203,7 @@ function SynastriaQuestieHelper:UpdateQuestList()
                         labelFrame:SetScript("OnMouseDown", function(frame, button)
                             if button == "LeftButton" then
                                 if coordX and coordY and coordZone then
-                                    self:AddTomTomWaypoint(coordX, coordY, chainQuest.name)
+                                    self:AddTomTomWaypoint(coordX, coordY, coordZone, chainQuest.name)
                                 end
                             elseif button == "RightButton" then
                                 -- Show copyable wowhead link popup

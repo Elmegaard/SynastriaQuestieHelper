@@ -4,7 +4,7 @@
 ## Author: Elmegaard
 ## Version: 1.0
 ## SavedVariables: SynastriaQuestieHelperDB
-## OptionalDeps: Ace3, SynastriaCoreLib-1.0, Questie
+## OptionalDeps: Ace3, SynastriaCoreLib-1.0, Questie, TomTom
 
 Libs\LibStub\LibStub.lua
 Libs\CallbackHandler-1.0\CallbackHandler-1.0.xml
