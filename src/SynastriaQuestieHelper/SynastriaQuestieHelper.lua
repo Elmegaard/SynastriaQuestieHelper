@@ -73,8 +73,8 @@ function SynastriaQuestieHelper:SetupOptions()
                         end,
                     },
                     showLevelTooLow = {
-                        name = "Show Quests You Can't Accept",
-                        desc = "Show quests where your level is below the minimum required level to accept them",
+                        name = "Show Quests Above Your Level",
+                        desc = "Show quests where your level is below the minimum required level",
                         type = "toggle",
                         order = 3,
                         get = function() return self.db.profile.showLevelTooLow end,
