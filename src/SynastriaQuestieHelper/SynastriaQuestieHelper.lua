@@ -295,6 +295,40 @@ function SynastriaQuestieHelper:ScanQuests()
     end, 0.1)
 end
 
+function SynastriaQuestieHelper:IsQuestReal(questId)
+    if not self.QuestieDB then return true end
+    
+    -- Check if quest has any quest givers (startedBy) OR turn-in points (finishedBy)
+    -- Beta/unavailable quests typically have no NPCs/objects to start or finish them
+    local startedBy = self.QuestieDB.QueryQuestSingle(questId, "startedBy")
+    local finishedBy = self.QuestieDB.QueryQuestSingle(questId, "finishedBy")
+    
+    local hasStarter = startedBy and type(startedBy) == "table" and (
+        (startedBy[1] and #startedBy[1] > 0) or  -- has creature starters
+        (startedBy[2] and #startedBy[2] > 0) or  -- has object starters
+        (startedBy[3] and #startedBy[3] > 0))    -- has item starters
+    
+    local hasFinisher = finishedBy and type(finishedBy) == "table" and (
+        (finishedBy[1] and #finishedBy[1] > 0) or  -- has creature finishers
+        (finishedBy[2] and #finishedBy[2] > 0))    -- has object finishers
+    
+    -- Quest must have either a starter OR a finisher to be valid
+    if not hasStarter and not hasFinisher then
+        return false
+    end
+    
+    -- Check quest flags for UNAVAILABLE flag (bit 14 = 16384)
+    local questFlags = self.QuestieDB.QueryQuestSingle(questId, "questFlags")
+    if questFlags then
+        local QUEST_FLAGS_UNAVAILABLE = 16384
+        if bit.band(questFlags, QUEST_FLAGS_UNAVAILABLE) ~= 0 then
+            return false
+        end
+    end
+    
+    return true
+end
+
 function SynastriaQuestieHelper:PerformQuestieScan(zoneId)
     if not self.QuestieDB or not self.QuestieDB.QuestPointers then
         self:Print("Questie database not available.")
@@ -317,37 +351,42 @@ function SynastriaQuestieHelper:PerformQuestieScan(zoneId)
     for questId, _ in pairs(self.QuestieDB.QuestPointers) do
         checkedCount = checkedCount + 1
         
-        -- Check if this quest has attunement rewards
-        local itemDBRewards = self:GetQuestRewardsFromItemDB(questId)
-        
-        if itemDBRewards and #itemDBRewards > 0 then
-            local questData = self.QuestieDB.GetQuest(questId)
+        -- Skip beta/test/unavailable quests
+        if not self:IsQuestReal(questId) then
+            -- Skip this quest
+        else
+            -- Check if this quest has attunement rewards
+            local itemDBRewards = self:GetQuestRewardsFromItemDB(questId)
             
-            if questData and questData.name then
-                local questZone = nil
+            if itemDBRewards and #itemDBRewards > 0 then
+                local questData = self.QuestieDB.GetQuest(questId)
                 
-                -- Try to get zone from zoneOrSort first
-                if questData.zoneOrSort and questData.zoneOrSort > 0 then
-                    questZone = questData.zoneOrSort
-                else
-                    -- Fallback to starter location zone
-                    local x, y, starterZoneId = self:GetQuestStarterCoords(questId)
-                    if starterZoneId then
-                        questZone = starterZoneId
-                    end
-                end
-                
-                if questZone then
-                    -- Group by zone
-                    if not questsByZone[questZone] then
-                        questsByZone[questZone] = {}
+                if questData and questData.name then
+                    local questZone = nil
+                    
+                    -- Try to get zone from zoneOrSort first
+                    if questData.zoneOrSort and questData.zoneOrSort > 0 then
+                        questZone = questData.zoneOrSort
+                    else
+                        -- Fallback to starter location zone
+                        local x, y, starterZoneId = self:GetQuestStarterCoords(questId)
+                        if starterZoneId then
+                            questZone = starterZoneId
+                        end
                     end
                     
-                    table.insert(questsByZone[questZone], {
-                        id = questId,
-                        name = questData.name,
-                        reward = nil
-                    })
+                    if questZone then
+                        -- Group by zone
+                        if not questsByZone[questZone] then
+                            questsByZone[questZone] = {}
+                        end
+                        
+                        table.insert(questsByZone[questZone], {
+                            id = questId,
+                            name = questData.name,
+                            reward = nil
+                        })
+                    end
                 end
             end
         end
@@ -536,23 +575,39 @@ function SynastriaQuestieHelper:GetQuestChain(questId)
             local success, questData = pcall(function() return self.QuestieDB.GetQuest(current) end)
             
             if success and questData then
-                -- preQuestSingle might be a table with quest IDs
-                local preQuest = nil
-                if questData.preQuestSingle then
-                    if type(questData.preQuestSingle) == "table" then
-                        preQuest = questData.preQuestSingle[1]
-                    else
-                        preQuest = questData.preQuestSingle
+                -- Skip beta/test quests in chain
+                if self:IsQuestReal(current) then
+                    -- preQuestSingle might be a table with quest IDs
+                    local preQuest = nil
+                    if questData.preQuestSingle then
+                        if type(questData.preQuestSingle) == "table" then
+                            preQuest = questData.preQuestSingle[1]
+                        else
+                            preQuest = questData.preQuestSingle
+                        end
+                    elseif questData.preQuestGroup and type(questData.preQuestGroup) == "table" then
+                        preQuest = questData.preQuestGroup[1]
                     end
-                elseif questData.preQuestGroup and type(questData.preQuestGroup) == "table" then
-                    preQuest = questData.preQuestGroup[1]
+                    
+                    table.insert(chain, 1, { 
+                        id = current, 
+                        name = questData.name or "Unknown"
+                    })
+                    current = preQuest
+                else
+                    -- Skip this beta quest and continue with its prerequisite
+                    local preQuest = nil
+                    if questData.preQuestSingle then
+                        if type(questData.preQuestSingle) == "table" then
+                            preQuest = questData.preQuestSingle[1]
+                        else
+                            preQuest = questData.preQuestSingle
+                        end
+                    elseif questData.preQuestGroup and type(questData.preQuestGroup) == "table" then
+                        preQuest = questData.preQuestGroup[1]
+                    end
+                    current = preQuest
                 end
-                
-                table.insert(chain, 1, { 
-                    id = current, 
-                    name = questData.name or "Unknown"
-                })
-                current = preQuest
             else
                 -- Failed to get quest data
                 break
@@ -763,6 +818,56 @@ function SynastriaQuestieHelper:GetQuestLogRewards(questId)
     return rewards
 end
 
+-- Check if player's race is compatible with quest requirement
+function SynastriaQuestieHelper:IsQuestForPlayerFaction(questId)
+    if not self.QuestieDB then return true end
+    
+    local requiredRaces = self.QuestieDB.QueryQuestSingle(questId, "requiredRaces")
+    if not requiredRaces or requiredRaces == 0 then
+        return true -- No race restriction
+    end
+    
+    -- Get player's race
+    local _, playerRace = UnitRace("player")
+    if not playerRace then return true end
+    
+    -- Lazy-load race keys from QuestieDB
+    if not self.raceKeys and self.QuestieDB and self.QuestieDB.raceKeys then
+        self.raceKeys = self.QuestieDB.raceKeys
+    end
+    
+    if not self.raceKeys then return true end
+    
+    -- Map player race to bitmask
+    local raceMask = self.raceKeys[string.upper(playerRace)]
+    if not raceMask then return true end
+    
+    -- Check if player's race is in the bitmask
+    return bit.band(requiredRaces, raceMask) ~= 0
+end
+
+-- Check if quest level is appropriate for player
+function SynastriaQuestieHelper:GetQuestLevelInfo(questId)
+    if not self.QuestieDB then return nil, nil end
+    
+    local requiredLevel = self.QuestieDB.QueryQuestSingle(questId, "requiredLevel") or 1
+    local questLevel = self.QuestieDB.QueryQuestSingle(questId, "questLevel") or requiredLevel
+    local playerLevel = UnitLevel("player")
+    
+    local levelDiff = questLevel - playerLevel
+    local tooLow = playerLevel < requiredLevel
+    local veryHigh = levelDiff > 5
+    
+    return {
+        requiredLevel = requiredLevel,
+        questLevel = questLevel,
+        playerLevel = playerLevel,
+        tooLow = tooLow,
+        veryHigh = veryHigh,
+        levelDiff = levelDiff
+    }
+end
+
 function SynastriaQuestieHelper:UpdateQuestList()
     if not self.scroll then return end
     self.scroll:ReleaseChildren()
@@ -790,13 +895,17 @@ function SynastriaQuestieHelper:UpdateQuestList()
     end
     
     for _, quest in ipairs(self.quests) do
-        -- Get quest chain
-        local chain = self:GetQuestChain(quest.id)
-        
-        -- If no chain found, create a single-item chain
-        if #chain == 0 then
-            chain = {{id = quest.id, name = quest.name}}
-        end
+        -- Skip beta/test quests
+        if not self:IsQuestReal(quest.id) then
+            -- Skip this quest entirely
+        else
+            -- Get quest chain
+            local chain = self:GetQuestChain(quest.id)
+            
+            -- If no chain found, create a single-item chain
+            if #chain == 0 then
+                chain = {{id = quest.id, name = quest.name}}
+            end
         
         -- Get rewards for quests in the chain
         local chainRewards = {}
@@ -819,17 +928,45 @@ function SynastriaQuestieHelper:UpdateQuestList()
         local rewardCount = 0
         for _ in pairs(chainRewards) do rewardCount = rewardCount + 1 end
         
-        -- Simplified header with reward count if applicable
+        -- Check faction and level compatibility
+        local wrongFaction = not self:IsQuestForPlayerFaction(quest.id)
+        local levelInfo = self:GetQuestLevelInfo(quest.id)
+        
+        -- Build header with warnings
         local headerText
+        local warnings = {}
+        
+        if wrongFaction then
+            table.insert(warnings, "Wrong Faction")
+        end
+        if levelInfo and levelInfo.tooLow then
+            table.insert(warnings, string.format("Requires Level %d", levelInfo.requiredLevel))
+        elseif levelInfo and levelInfo.veryHigh then
+            table.insert(warnings, string.format("Level %d Quest", levelInfo.questLevel))
+        end
+        
         if rewardCount > 0 then
             headerText = string.format("%s (Chain: %d quests, %d with rewards)", quest.name, #chain, rewardCount)
         else
             headerText = string.format("%s (Chain: %d quests)", quest.name, #chain)
         end
         
+        if #warnings > 0 then
+            headerText = headerText .. " [" .. table.concat(warnings, ", ") .. "]"
+        end
+        
         headerLabel:SetText(headerText)
         headerLabel:SetFullWidth(true)
-        headerLabel:SetColor(1, 0.82, 0) -- Gold color for header
+        
+        -- Color header: red if wrong faction or too low level, orange if very high level, gold otherwise
+        if wrongFaction or (levelInfo and levelInfo.tooLow) then
+            headerLabel:SetColor(1, 0.3, 0.3) -- Red for unavailable
+        elseif levelInfo and levelInfo.veryHigh then
+            headerLabel:SetColor(1, 0.65, 0) -- Orange for high level
+        else
+            headerLabel:SetColor(1, 0.82, 0) -- Gold for normal
+        end
+        
         headerLabel:SetFont(GameFontNormal:GetFont(), 14, "OUTLINE")
         self.scroll:AddChild(headerLabel)
         
@@ -844,16 +981,23 @@ function SynastriaQuestieHelper:UpdateQuestList()
                     -- Use numbers for all quests in chain
                     local prefix = string.format("  %d. ", i)
                     
-                    -- Add coordinates for available quests
+                    -- Add coordinates and level info for quests
                     local questText = chainQuest.name
                     local coordX, coordY, coordZone
+                    
+                    -- Add level info
+                    local questLevelInfo = self:GetQuestLevelInfo(chainQuest.id)
+                    if questLevelInfo and questLevelInfo.questLevel then
+                        questText = string.format("[%d] %s", questLevelInfo.questLevel, questText)
+                    end
+                    
                     if status == "available" then
                         local x, y, zoneId = self:GetQuestStarterCoords(chainQuest.id)
                         if x and y then
-                            questText = string.format("%s [%.1f, %.1f]", chainQuest.name, x, y)
+                            questText = string.format("%s [%.1f, %.1f]", questText, x, y)
                             coordX, coordY, coordZone = x, y, zoneId
                         else
-                            questText = string.format("%s (item)", chainQuest.name)
+                            questText = string.format("%s (item)", questText)
                         end
                     end
                     
@@ -992,5 +1136,6 @@ function SynastriaQuestieHelper:UpdateQuestList()
             spacer:SetText(" ")
             spacer:SetFullWidth(true)
             self.scroll:AddChild(spacer)
+        end -- end if IsQuestReal
     end
 end
