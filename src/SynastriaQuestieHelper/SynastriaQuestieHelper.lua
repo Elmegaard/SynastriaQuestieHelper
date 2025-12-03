@@ -981,17 +981,23 @@ function SynastriaQuestieHelper:UpdateQuestList()
                     -- Use numbers for all quests in chain
                     local prefix = string.format("  %d. ", i)
                     
+                    -- Check faction and level compatibility for this quest
+                    local questWrongFaction = not self:IsQuestForPlayerFaction(chainQuest.id)
+                    local questLevelInfo = self:GetQuestLevelInfo(chainQuest.id)
+                    local questTooLow = questLevelInfo and questLevelInfo.tooLow
+                    local isUnavailableToPlayer = questWrongFaction or questTooLow
+                    
                     -- Add coordinates and level info for quests
                     local questText = chainQuest.name
                     local coordX, coordY, coordZone
                     
                     -- Add level info
-                    local questLevelInfo = self:GetQuestLevelInfo(chainQuest.id)
                     if questLevelInfo and questLevelInfo.questLevel then
                         questText = string.format("[%d] %s", questLevelInfo.questLevel, questText)
                     end
                     
-                    if status == "available" then
+                    -- Only show coordinates if the quest is available AND player can do it
+                    if status == "available" and not isUnavailableToPlayer then
                         local x, y, zoneId = self:GetQuestStarterCoords(chainQuest.id)
                         if x and y then
                             questText = string.format("%s [%.1f, %.1f]", questText, x, y)
@@ -1004,14 +1010,14 @@ function SynastriaQuestieHelper:UpdateQuestList()
                     chainLabel:SetText(prefix .. questText)
                     chainLabel:SetFullWidth(true)
                     
-                    -- Color based on status
+                    -- Color based on status and availability
                     if status == "completed" then
                         chainLabel:SetColor(0.6, 0.6, 0.6) -- Light gray
                     elseif status == "accepted" then
                         chainLabel:SetColor(0, 1, 0) -- Green
-                    elseif status == "available" then
-                        chainLabel:SetColor(1, 1, 0) -- Yellow
-                    else -- unavailable
+                    elseif status == "available" and not isUnavailableToPlayer then
+                        chainLabel:SetColor(1, 1, 0) -- Yellow (only if player can do it)
+                    else -- unavailable or wrong faction/level
                         chainLabel:SetColor(0.8, 0.4, 0.4) -- Muted red
                     end
                     
