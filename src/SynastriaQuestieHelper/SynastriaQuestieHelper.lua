@@ -20,6 +20,7 @@ function SynastriaQuestieHelper:OnInitialize()
             hideCompleted = true, -- Hide completed quests by default
             showWrongFaction = false, -- Show quests for other faction
             showLevelTooLow = false, -- Show quests where player is below required level
+            showCrossZoneChains = true, -- Show quest chains that span multiple zones
             framePos = {}, -- Store frame position and size
             minimapButton = {
                 hide = false,
@@ -71,13 +72,23 @@ function SynastriaQuestieHelper:SetupOptions()
                         end,
                     },
                     showLevelTooLow = {
-                        name = "Show High Level Quests",
+                        name = "Show Quests You Can't Accept",
                         desc = "Show quests where your level is below the minimum required level to accept them",
                         type = "toggle",
                         order = 3,
                         get = function() return self.db.profile.showLevelTooLow end,
                         set = function(_, value)
                             self.db.profile.showLevelTooLow = value
+                        end,
+                    },
+                    showCrossZoneChains = {
+                        name = "Show Cross-Zone Quest Chains",
+                        desc = "Show quest chains where any quest in the chain is in the current zone (even if the final quest is in another zone)",
+                        type = "toggle",
+                        order = 4,
+                        get = function() return self.db.profile.showCrossZoneChains end,
+                        set = function(_, value)
+                            self.db.profile.showCrossZoneChains = value
                         end,
                     },
                 },
@@ -350,6 +361,9 @@ function SynastriaQuestieHelper:ScanQuests()
         return
     end
     
+    -- Store current zone ID for later use
+    self.currentZoneId = zoneId
+    
     
         -- Defer the actual scanning to next frame to allow UI to update
     self:ScheduleTimer(function()
@@ -408,6 +422,7 @@ function SynastriaQuestieHelper:PerformQuestieScan(zoneId)
     
     local questsByZone = {} -- Group quests by zoneOrSort
     local checkedCount = 0
+    local questsWithChains = {} -- Track which quests belong in this zone (including chain members)
     
     -- Iterate through all quests in Questie's database
     for questId, _ in pairs(self.QuestieDB.QuestPointers) do
@@ -424,9 +439,11 @@ function SynastriaQuestieHelper:PerformQuestieScan(zoneId)
                 local questData = self.QuestieDB.GetQuest(questId)
                 
                 if questData and questData.name then
+                    -- Check if this quest or any quest in its chain is in the current zone
+                    local shouldInclude = false
                     local questZone = nil
                     
-                    -- Try to get zone from zoneOrSort first
+                    -- Get this quest's zone
                     if questData.zoneOrSort and questData.zoneOrSort > 0 then
                         questZone = questData.zoneOrSort
                     else
@@ -437,13 +454,42 @@ function SynastriaQuestieHelper:PerformQuestieScan(zoneId)
                         end
                     end
                     
-                    if questZone then
-                        -- Group by zone
-                        if not questsByZone[questZone] then
-                            questsByZone[questZone] = {}
+                    -- If this quest is in the current zone, include it
+                    if questZone == zoneId then
+                        shouldInclude = true
+                    elseif self.db.profile.showCrossZoneChains then
+                        -- Only check chain if cross-zone chains are enabled
+                        -- Check if any quest in the chain is in the current zone
+                        local chain = self:GetQuestChain(questId)
+                        for _, chainQuest in ipairs(chain) do
+                            local chainQuestData = self.QuestieDB.GetQuest(chainQuest.id)
+                            if chainQuestData then
+                                local chainZone = nil
+                                if chainQuestData.zoneOrSort and chainQuestData.zoneOrSort > 0 then
+                                    chainZone = chainQuestData.zoneOrSort
+                                else
+                                    local x, y, starterZoneId = self:GetQuestStarterCoords(chainQuest.id)
+                                    if starterZoneId then
+                                        chainZone = starterZoneId
+                                    end
+                                end
+                                
+                                if chainZone == zoneId then
+                                    shouldInclude = true
+                                    break
+                                end
+                            end
+                        end
+                    end
+                    
+                    if shouldInclude then
+                        -- Group by the final quest's zone (or use zoneId if unknown)
+                        local targetZone = questZone or zoneId
+                        if not questsByZone[targetZone] then
+                            questsByZone[targetZone] = {}
                         end
                         
-                        table.insert(questsByZone[questZone], {
+                        table.insert(questsByZone[targetZone], {
                             id = questId,
                             name = questData.name,
                             reward = nil
@@ -604,6 +650,31 @@ function SynastriaQuestieHelper:GetQuestStarterCoords(questId)
     
     -- Cache nil result to avoid repeated lookups
     self.coordCache[questId] = false
+    return nil
+end
+
+-- Get zone name from zoneId
+function SynastriaQuestieHelper:GetZoneName(zoneId)
+    if not zoneId then return nil end
+    
+    -- Lazy-load ZoneDB and C_Map
+    if not self.ZoneDB and QuestieLoader then
+        self.ZoneDB = QuestieLoader:ImportModule("ZoneDB")
+    end
+    if not self.C_Map and QuestieCompat then
+        self.C_Map = QuestieCompat.C_Map
+    end
+    
+    if self.ZoneDB and self.C_Map then
+        local uiMapId = self.ZoneDB:GetUiMapIdByAreaId(zoneId)
+        if uiMapId then
+            local mapInfo = self.C_Map.GetMapInfo(uiMapId)
+            if mapInfo then
+                return mapInfo.name
+            end
+        end
+    end
+    
     return nil
 end
 
@@ -1076,9 +1147,21 @@ function SynastriaQuestieHelper:UpdateQuestList()
                     -- Only show coordinates if the quest is available AND player can do it
                     if status == "available" and not isUnavailableToPlayer then
                         local x, y, zoneId = self:GetQuestStarterCoords(chainQuest.id)
-                        if x and y then
-                            questText = string.format("%s [%.1f, %.1f]", questText, x, y)
-                            coordX, coordY, coordZone = x, y, zoneId
+                        if x and y and zoneId then
+                            -- Check if quest is in the current zone
+                            if zoneId == self.currentZoneId then
+                                -- Same zone - show coordinates
+                                questText = string.format("%s [%.1f, %.1f]", questText, x, y)
+                                coordX, coordY, coordZone = x, y, zoneId
+                            else
+                                -- Different zone - show zone name
+                                local zoneName = self:GetZoneName(zoneId)
+                                if zoneName then
+                                    questText = string.format("%s (%s)", questText, zoneName)
+                                else
+                                    questText = string.format("%s (Other Zone)", questText)
+                                end
+                            end
                         else
                             questText = string.format("%s (item)", questText)
                         end
