@@ -905,7 +905,7 @@ function SynastriaQuestieHelper:UpdateFrameTransparency()
         
         -- Also apply to border
         -- Default AceGUI border is usually white/greyish. We'll set it to white with the requested alpha.
-        self.frame.frame:SetBackdropBorderColor(1, 1, 1, self.db.profile.backgroundTransparency)
+        self.frame.frame:SetBackdropBorderColor(0.2, 0.2, 0.2, self.db.profile.backgroundTransparency)
     end
 end
 
