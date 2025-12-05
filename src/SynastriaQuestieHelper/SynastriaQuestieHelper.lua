@@ -539,7 +539,19 @@ function SynastriaQuestieHelper:ScanQuests()
     
     -- Find AreaId by matching zone name
     local zoneId = nil
-    if self.ZoneDB and self.ZoneDB.private and self.ZoneDB.private.areaIdToUiMapId and self.C_Map then
+    
+    -- First check dungeons table (dungeons have names but may not be in C_Map)
+    if self.ZoneDB and self.ZoneDB.private and self.ZoneDB.private.dungeons then
+        for areaId, dungeonData in pairs(self.ZoneDB.private.dungeons) do
+            if dungeonData[1] == zoneName then
+                zoneId = areaId
+                break
+            end
+        end
+    end
+    
+    -- If not a dungeon, check regular zones via C_Map
+    if not zoneId and self.ZoneDB and self.ZoneDB.private and self.ZoneDB.private.areaIdToUiMapId and self.C_Map then
         for areaId, uiMapId in pairs(self.ZoneDB.private.areaIdToUiMapId) do
             local mapInfo = self.C_Map.GetMapInfo(uiMapId)
             if mapInfo and mapInfo.name == zoneName then
@@ -550,7 +562,7 @@ function SynastriaQuestieHelper:ScanQuests()
     end
     
     if not zoneId then
-        self:Print(string.format("Could not find AreaId for zone: %s", zoneName))
+        self:Print(string.format("Could not find AreaId for zone: %s. Please report this issue.", zoneName))
         self.isScanning = false
         self.isLoading = false
         return
@@ -645,7 +657,26 @@ function SynastriaQuestieHelper:PerformQuestieScan(zoneId)
                         end
                     end
                     
-                    -- Only check starter if zoneOrSort didn't match
+                    -- Check extraObjectives for zone (dungeons often use this)
+                    if not shouldInclude then
+                        local extraObjectives = self.QuestieDB.QueryQuestSingle(questId, "extraObjectives")
+                        if extraObjectives and type(extraObjectives) == "table" then
+                            for _, objective in ipairs(extraObjectives) do
+                                if objective and objective[1] and type(objective[1]) == "table" then
+                                    for objZoneId, _ in pairs(objective[1]) do
+                                        if objZoneId == zoneId then
+                                            shouldInclude = true
+                                            questZone = zoneId
+                                            break
+                                        end
+                                    end
+                                end
+                                if shouldInclude then break end
+                            end
+                        end
+                    end
+                    
+                    -- Only check starter if zoneOrSort and extraObjectives didn't match
                     if not shouldInclude then
                         local starterX, starterY, starterZoneId = self:GetQuestStarterCoords(questId)
                         if starterZoneId == zoneId then
@@ -671,6 +702,24 @@ function SynastriaQuestieHelper:PerformQuestieScan(zoneId)
                                         if chainQuestData.zoneOrSort == zoneId then
                                             shouldInclude = true
                                             break
+                                        end
+                                    end
+                                    
+                                    -- Check extraObjectives
+                                    if not shouldInclude then
+                                        local chainExtraObjectives = self.QuestieDB.QueryQuestSingle(chainQuest.id, "extraObjectives")
+                                        if chainExtraObjectives and type(chainExtraObjectives) == "table" then
+                                            for _, objective in ipairs(chainExtraObjectives) do
+                                                if objective and objective[1] and type(objective[1]) == "table" then
+                                                    for objZoneId, _ in pairs(objective[1]) do
+                                                        if objZoneId == zoneId then
+                                                            shouldInclude = true
+                                                            break
+                                                        end
+                                                    end
+                                                end
+                                                if shouldInclude then break end
+                                            end
                                         end
                                     end
                                     
