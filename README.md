@@ -42,6 +42,12 @@
 
 ## Changelog
 
+### Version 1.4
+
+- Added auto launch option (Xayia)
+- Added transparency options (Xayia)
+- Added don't close on escape option (Xayia)
+
 ### Version 1.3
 
 - Added configuration options accessible via right-click minimap button or addon settings
@@ -84,3 +90,8 @@
 
 - **Questie**: For the excellent quest database
 - **Copilot**: Basically wrote the entire addon
+
+### Contributors
+
+- Elmegaard
+- Xayia
