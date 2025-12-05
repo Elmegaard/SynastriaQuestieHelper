@@ -23,6 +23,10 @@ function SynastriaQuestieHelper:OnInitialize()
             showCrossZoneChains = true, -- Show quest chains that span multiple zones
             persistWaypoints = false, -- Save waypoints between sessions
             framePos = {}, -- Store frame position and size
+            transparency = 1.0, -- Window transparency (1.0 = opaque)
+            backgroundTransparency = 0.8, -- Background transparency
+            autoLoad = false, -- Automatically open window on login
+            noCloseOnEsc = false, -- Prevent closing with ESC key
             minimapButton = {
                 hide = false,
                 position = 225,
@@ -37,6 +41,23 @@ function SynastriaQuestieHelper:OnInitialize()
 
     -- Create minimap button
     self:CreateMinimapButton()
+
+    -- Register logout event to save window position
+    self:RegisterEvent("PLAYER_LOGOUT")
+end
+
+function SynastriaQuestieHelper:PLAYER_LOGOUT()
+    if self.frame and self.frame.frame and self.frame.frame:IsShown() then
+        local status = self.frame.status or self.frame.localstatus
+        if status then
+            self.db.profile.framePos = {
+                width = status.width,
+                height = status.height,
+                top = status.top,
+                left = status.left,
+            }
+        end
+    end
 end
 
 function SynastriaQuestieHelper:SetupOptions()
@@ -100,6 +121,62 @@ function SynastriaQuestieHelper:SetupOptions()
                         get = function() return self.db.profile.persistWaypoints end,
                         set = function(_, value)
                             self.db.profile.persistWaypoints = value
+                        end,
+                    },
+                },
+            },
+            window = {
+                name = "Window Settings",
+                type = "group",
+                order = 2,
+                args = {
+                    transparency = {
+                        name = "Master Transparency",
+                        desc = "Adjust the transparency of the whole window (affects text and background)",
+                        type = "range",
+                        min = 0.1,
+                        max = 1.0,
+                        step = 0.05,
+                        order = 1,
+                        get = function() return self.db.profile.transparency end,
+                        set = function(_, value)
+                            self.db.profile.transparency = value
+                            self:UpdateFrameTransparency()
+                        end,
+                    },
+                    backgroundTransparency = {
+                        name = "Background Transparency",
+                        desc = "Adjust the transparency of the window background only",
+                        type = "range",
+                        min = 0.0,
+                        max = 1.0,
+                        step = 0.05,
+                        order = 2,
+                        get = function() return self.db.profile.backgroundTransparency end,
+                        set = function(_, value)
+                            self.db.profile.backgroundTransparency = value
+                            self:UpdateFrameTransparency()
+                        end,
+                    },
+                    autoLoad = {
+                        name = "Auto Open on Login",
+                        desc = "Automatically open the window when you log in or reload UI",
+                        type = "toggle",
+                        order = 2,
+                        get = function() return self.db.profile.autoLoad end,
+                        set = function(_, value)
+                            self.db.profile.autoLoad = value
+                        end,
+                    },
+                    noCloseOnEsc = {
+                        name = "Do Not Close with ESC",
+                        desc = "Prevent the window from closing when pressing the ESC key",
+                        type = "toggle",
+                        order = 3,
+                        get = function() return self.db.profile.noCloseOnEsc end,
+                        set = function(_, value)
+                            self.db.profile.noCloseOnEsc = value
+                            self:UpdateEscBehavior()
                         end,
                     },
                 },
@@ -216,6 +293,9 @@ end
 
 function SynastriaQuestieHelper:OnEnable()
     -- Called when the addon is enabled
+    if self.db.profile.autoLoad then
+        self:ToggleUI()
+    end
 end
 
 function SynastriaQuestieHelper:OnSlashCommand(input)
@@ -813,6 +893,50 @@ function SynastriaQuestieHelper:GetQuestChain(questId)
     return chain
 end
 
+function SynastriaQuestieHelper:UpdateFrameTransparency()
+    if self.frame and self.frame.frame then
+        -- Set master transparency (affects everything)
+        self.frame.frame:SetAlpha(self.db.profile.transparency)
+        
+        -- Set background transparency
+        -- AceGUI frames use SetBackdropColor for the background
+        -- We keep the color black (0,0,0) and just adjust alpha
+        self.frame.frame:SetBackdropColor(0, 0, 0, self.db.profile.backgroundTransparency)
+        
+        -- Also apply to border
+        -- Default AceGUI border is usually white/greyish. We'll set it to white with the requested alpha.
+        self.frame.frame:SetBackdropBorderColor(1, 1, 1, self.db.profile.backgroundTransparency)
+    end
+end
+
+function SynastriaQuestieHelper:UpdateEscBehavior()
+    -- Note: This might require a reload or re-opening the frame to fully take effect 
+    -- depending on how Blizzard handles the UISpecialFrames table dynamically.
+    -- But we try to update it live.
+    
+    local frameName = "SynastriaQuestieHelperMainFrame"
+    local foundIndex = nil
+    
+    for i, name in ipairs(UISpecialFrames) do
+        if name == frameName then
+            foundIndex = i
+            break
+        end
+    end
+    
+    if self.db.profile.noCloseOnEsc then
+        -- Remove from UISpecialFrames if present
+        if foundIndex then
+            table.remove(UISpecialFrames, foundIndex)
+        end
+    else
+        -- Add to UISpecialFrames if not present
+        if not foundIndex then
+            table.insert(UISpecialFrames, frameName)
+        end
+    end
+end
+
 function SynastriaQuestieHelper:ToggleUI()
     if not self.frame then
         self:CreateUI()
@@ -871,7 +995,14 @@ function SynastriaQuestieHelper:CreateUI()
     
     -- Make frame closable with ESC without blocking keyboard input
     _G["SynastriaQuestieHelperMainFrame"] = frame.frame
-    tinsert(UISpecialFrames, "SynastriaQuestieHelperMainFrame")
+    
+    -- Apply ESC behavior setting
+    if not self.db.profile.noCloseOnEsc then
+        tinsert(UISpecialFrames, "SynastriaQuestieHelperMainFrame")
+    end
+    
+    -- Apply transparency
+    self:UpdateFrameTransparency()
     
     self.frame = frame
     
