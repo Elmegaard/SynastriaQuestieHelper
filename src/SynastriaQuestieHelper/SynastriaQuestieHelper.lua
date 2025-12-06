@@ -678,6 +678,36 @@ function SynastriaQuestieHelper:PerformQuestieScan(zoneId)
             -- Check if this quest has attunement rewards
             local itemDBRewards = self:GetQuestRewardsFromItemDB(questId)
             
+            -- If this quest has no rewards, check if any follow-up quest in the chain has rewards
+            if not itemDBRewards or #itemDBRewards == 0 then
+                if self.followUpCache[questId] then
+                    -- Check all follow-up quests recursively
+                    local visited = {[questId] = true}
+                    local toCheck = {}
+                    for _, followUpId in ipairs(self.followUpCache[questId]) do
+                        table.insert(toCheck, followUpId)
+                    end
+                    
+                    while #toCheck > 0 and (not itemDBRewards or #itemDBRewards == 0) do
+                        local checkId = table.remove(toCheck, 1)
+                        if not visited[checkId] then
+                            visited[checkId] = true
+                            local followUpRewards = self:GetQuestRewardsFromItemDB(checkId)
+                            if followUpRewards and #followUpRewards > 0 then
+                                itemDBRewards = followUpRewards
+                                break
+                            end
+                            -- Add this quest's follow-ups to check
+                            if self.followUpCache[checkId] then
+                                for _, nextFollowUpId in ipairs(self.followUpCache[checkId]) do
+                                    table.insert(toCheck, nextFollowUpId)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            
             if itemDBRewards and #itemDBRewards > 0 then
                 local questData = self.QuestieDB.GetQuest(questId)
                 
@@ -688,9 +718,9 @@ function SynastriaQuestieHelper:PerformQuestieScan(zoneId)
                     
                     -- Check zoneOrSort first (fastest)
                     if questData.zoneOrSort and questData.zoneOrSort > 0 then
-                        questZone = questData.zoneOrSort
-                        if questZone == zoneId then
+                        if questData.zoneOrSort == zoneId then
                             shouldInclude = true
+                            questZone = zoneId
                         end
                     end
                     
@@ -778,7 +808,7 @@ function SynastriaQuestieHelper:PerformQuestieScan(zoneId)
                         -- This prevents showing intermediate quests as separate chains
                         local isPrerequisite = false
                         
-                        -- Check if any other quest with rewards has this as a prerequisite
+                        -- Check if any other quest with rewards has this as a prerequisite AND is in the current zone
                         for otherQuestId, _ in pairs(self.QuestieDB.QuestPointers) do
                             if otherQuestId ~= questId and self:IsQuestReal(otherQuestId) then
                                 local otherRewards = self:GetQuestRewardsFromItemDB(otherQuestId)
@@ -787,8 +817,25 @@ function SynastriaQuestieHelper:PerformQuestieScan(zoneId)
                                     local otherChain = self:GetQuestChain(otherQuestId)
                                     for _, chainQuest in ipairs(otherChain) do
                                         if chainQuest.id == questId and chainQuest.id ~= otherQuestId then
-                                            -- This quest is a prerequisite, don't add it separately
-                                            isPrerequisite = true
+                                            -- This quest is a prerequisite, but only skip it if the other quest is also in this zone
+                                            local otherQuestData = self.QuestieDB.GetQuest(otherQuestId)
+                                            if otherQuestData then
+                                                local otherInZone = false
+                                                
+                                                -- Check if other quest is in current zone
+                                                if otherQuestData.zoneOrSort == zoneId then
+                                                    otherInZone = true
+                                                else
+                                                    local otherStarterX, otherStarterY, otherStarterZoneId = self:GetQuestStarterCoords(otherQuestId)
+                                                    if otherStarterZoneId == zoneId then
+                                                        otherInZone = true
+                                                    end
+                                                end
+                                                
+                                                if otherInZone then
+                                                    isPrerequisite = true
+                                                end
+                                            end
                                             break
                                         end
                                     end
