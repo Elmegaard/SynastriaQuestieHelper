@@ -14,6 +14,7 @@ SynastriaQuestieHelper.coordCache = {}
 SynastriaQuestieHelper.chainCache = {} -- Cache quest chains
 SynastriaQuestieHelper.rewardCache = {} -- Cache quest rewards
 SynastriaQuestieHelper.followUpCache = {} -- Cache: questId -> list of quests that require it as prerequisite
+SynastriaQuestieHelper.questToRewardQuestCache = {} -- Cache: questId -> final quest in chain with rewards (if any)
 SynastriaQuestieHelper.cachesBuilt = false -- Track if we've built starter caches
 
 function SynastriaQuestieHelper:OnInitialize()
@@ -808,40 +809,32 @@ function SynastriaQuestieHelper:PerformQuestieScan(zoneId)
                         -- This prevents showing intermediate quests as separate chains
                         local isPrerequisite = false
                         
-                        -- Check if any other quest with rewards has this as a prerequisite AND is in the current zone
-                        for otherQuestId, _ in pairs(self.QuestieDB.QuestPointers) do
-                            if otherQuestId ~= questId and self:IsQuestReal(otherQuestId) then
-                                local otherRewards = self:GetQuestRewardsFromItemDB(otherQuestId)
-                                if otherRewards and #otherRewards > 0 then
-                                    -- Check if this quest is in the other quest's chain
-                                    local otherChain = self:GetQuestChain(otherQuestId)
-                                    for _, chainQuest in ipairs(otherChain) do
-                                        if chainQuest.id == questId and chainQuest.id ~= otherQuestId then
-                                            -- This quest is a prerequisite, but only skip it if the other quest is also in this zone
-                                            local otherQuestData = self.QuestieDB.GetQuest(otherQuestId)
-                                            if otherQuestData then
-                                                local otherInZone = false
-                                                
-                                                -- Check if other quest is in current zone
-                                                if otherQuestData.zoneOrSort == zoneId then
-                                                    otherInZone = true
-                                                else
-                                                    local otherStarterX, otherStarterY, otherStarterZoneId = self:GetQuestStarterCoords(otherQuestId)
-                                                    if otherStarterZoneId == zoneId then
-                                                        otherInZone = true
-                                                    end
-                                                end
-                                                
-                                                if otherInZone then
-                                                    isPrerequisite = true
-                                                end
+                        -- Use followUpCache to quickly check if any follow-up quest has rewards in this zone
+                        if self.followUpCache[questId] then
+                            for _, followUpId in ipairs(self.followUpCache[questId]) do
+                                local followUpRewards = self:GetQuestRewardsFromItemDB(followUpId)
+                                if followUpRewards and #followUpRewards > 0 then
+                                    -- This quest has a follow-up with rewards, check if follow-up is in current zone
+                                    local followUpData = self.QuestieDB.GetQuest(followUpId)
+                                    if followUpData then
+                                        local followUpInZone = false
+                                        
+                                        if followUpData.zoneOrSort == zoneId then
+                                            followUpInZone = true
+                                        else
+                                            local followUpStarterX, followUpStarterY, followUpStarterZoneId = self:GetQuestStarterCoords(followUpId)
+                                            if followUpStarterZoneId == zoneId then
+                                                followUpInZone = true
                                             end
+                                        end
+                                        
+                                        if followUpInZone then
+                                            isPrerequisite = true
                                             break
                                         end
                                     end
                                 end
                             end
-                            if isPrerequisite then break end
                         end
                         
                         if not isPrerequisite then
