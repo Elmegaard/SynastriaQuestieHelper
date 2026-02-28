@@ -42,6 +42,11 @@
 
 ## Changelog
 
+### Version 1.8
+
+- Added Account Attunables Check
+- Added Distance Check to order of quests
+
 ### Version 1.7
 
 - Fixed some quests not showing up
